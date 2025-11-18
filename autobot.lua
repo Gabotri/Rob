@@ -1,11 +1,11 @@
 --[==[
-    MÓDULO: Path Recorder (Waypoint Sequencer) v1.0
+    MÓDULO: Path Recorder (Waypoint Sequencer) v1.1
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - Criação visual de pontos de caminho (Waypoints).
-    - Reprodução suave do caminho (Tween/Move).
-    - Atalho de Ativação: F5.
-    - Contém o esqueleto de um Outliner (Lista) e Painel de Propriedades.
+    - [FIX] Substituído Color3.white por Color3.fromRGB para corrigir erro 'got nil'.
+    - Criação visual de pontos (Clique Direito).
+    - Reprodução suave (Tween) com velocidade ajustável.
+    - Atalho F5 (Ativar/Desativar) e P (Liberar Mouse).
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -25,6 +25,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -32,67 +33,68 @@ local Camera = Workspace.CurrentCamera
 -- Estado do Módulo
 local PathSettings = {
     Enabled = false,
-    IsRecording = false,
     IsPlaying = false,
-    MouseLocked = true,    -- Para interação na UI
-    SmoothSpeed = 100,     -- Velocidade de movimento em studs/s
+    MouseLocked = true,    
+    SmoothSpeed = 50,      -- Velocidade Padrão
     DrawColor = Color3.fromRGB(0, 255, 255)
 }
 
--- Armazenamento e Cache
-local Waypoints = {}       -- Lista de CFrames/Pontos
-local WaypointParts = {}   -- Peças visuais no mundo
-local WaypointLines = {}   -- Linhas visuais (Drawing API)
+-- Armazenamento
+local Waypoints = {}       
+local WaypointParts = {}   
+local WaypointLines = {}   
 local CurrentMoveTween = nil
 local CurrentWaypointIndex = 1
 
 -- UI References
-local ScreenGui, PlayPauseBtn, ClearBtn, PointListScroll
+local ScreenGui, PointListScroll
 
--- 3. LÓGICA DE VISUALIZAÇÃO (Desenho de Pontos e Linhas)
+-- 3. LÓGICA DE VISUALIZAÇÃO (Drawing API + Parts)
 --========================================================================
-
-local function DrawLine(p1, p2, color)
-    local line = Drawing.new("Line")
-    line.Thickness = 2
-    line.Color = color
-    
-    local vec1, vis1 = Camera:WorldToViewportPoint(p1)
-    local vec2, vis2 = Camera:WorldToViewportPoint(p2)
-
-    if vis1 and vis2 then
-        line.Visible = true
-        line.From = Vector2.new(vec1.X, vec1.Y)
-        line.To = Vector2.new(vec2.X, vec2.Y)
-    else
-        line.Visible = false
-    end
-    table.insert(WaypointLines, line)
+local function ClearVisuals()
+    for _, line in pairs(WaypointLines) do line:Remove() end
+    WaypointLines = {}
+    for _, part in pairs(WaypointParts) do part:Destroy() end
+    WaypointParts = {}
 end
 
 local function UpdateVisualPath()
-    -- Limpa Linhas Antigas
+    -- Limpa linhas antigas (Drawing)
     for _, line in pairs(WaypointLines) do line:Remove() end
     WaypointLines = {}
     
-    -- Atualiza Peças e Desenha Novas Linhas
+    -- Garante que as partes existam
     for i, point in ipairs(Waypoints) do
-        local part = WaypointParts[i]
-        if not part then
-            part = Instance.new("Part")
-            part.Shape = Enum.PartType.Ball; part.Size = Vector3.new(1,1,1); part.Anchored = true; part.CanCollide = false
-            part.Material = Enum.Material.Neon; part.Color = PathSettings.DrawColor; part.Position = point.CFrame.Position
-            part.Parent = Workspace; part.Name = "Waypoint_"..i
+        if not WaypointParts[i] then
+            local part = Instance.new("Part")
+            part.Shape = Enum.PartType.Ball
+            part.Size = Vector3.new(1.5, 1.5, 1.5)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Material = Enum.Material.Neon
+            part.Color = PathSettings.DrawColor
+            part.Position = point.CFrame.Position
+            part.Parent = Workspace
+            part.Name = "Waypoint_"..i
             WaypointParts[i] = part
         end
         
-        -- Linha Conectora (Path Visualization)
+        -- Desenha linha conectando ao anterior
         if i > 1 then
-            local prevPart = WaypointParts[i-1]
-            if prevPart then
-                -- Desenho de Linhas via Drawing API para performance (Simulando Traceline)
-                -- O Drawing API precisa ser atualizado em RenderStepped (feito na função principal)
-                -- Vamos apenas criar as partes para a lógica do caminho
+            local currPos = WaypointParts[i].Position
+            local prevPos = WaypointParts[i-1].Position
+            
+            local vec1, vis1 = Camera:WorldToViewportPoint(currPos)
+            local vec2, vis2 = Camera:WorldToViewportPoint(prevPos)
+            
+            if vis1 and vis2 then
+                local line = Drawing.new("Line")
+                line.Thickness = 2
+                line.Color = PathSettings.DrawColor
+                line.From = Vector2.new(vec1.X, vec1.Y)
+                line.To = Vector2.new(vec2.X, vec2.Y)
+                line.Visible = true
+                table.insert(WaypointLines, line)
             end
         end
     end
@@ -100,12 +102,13 @@ end
 
 -- 4. MOVIMENTO E AUTOMAÇÃO (Playback)
 --========================================================================
-
 local function MoveToNextWaypoint()
+    if not PathSettings.IsPlaying then return end
+
     if CurrentWaypointIndex > #Waypoints then
         LogarEvento("SUCESSO", "Caminho finalizado.")
-        CurrentWaypointIndex = 1
         PathSettings.IsPlaying = false
+        CurrentWaypointIndex = 1
         return
     end
 
@@ -113,150 +116,196 @@ local function MoveToNextWaypoint()
     if not hrp then return end
     
     local targetPoint = Waypoints[CurrentWaypointIndex]
-    local targetCFrame = targetPoint.CFrame
     
-    local distance = (targetCFrame.Position - hrp.Position).Magnitude
-    local duration = distance / PathSettings.SmoothSpeed
+    -- Cálculo de Tempo baseado na Velocidade (Slider)
+    local distance = (targetPoint.CFrame.Position - hrp.Position).Magnitude
+    local speed = math.max(1, PathSettings.SmoothSpeed) -- Evita div/0
+    local duration = distance / speed
     
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
-    CurrentMoveTween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+    CurrentMoveTween = TweenService:Create(hrp, tweenInfo, {CFrame = targetPoint.CFrame})
     CurrentMoveTween:Play()
     
-    CurrentMoveTween.Completed:Wait() -- Espera o movimento acabar
+    LogarEvento("INFO", "Indo para Ponto #"..CurrentWaypointIndex.." ("..math.floor(duration).."s)")
     
-    CurrentWaypointIndex = CurrentWaypointIndex + 1
-    MoveToNextWaypoint()
-end
-
-local function TogglePlayback(state)
-    PathSettings.IsPlaying = state
-    if CurrentMoveTween then CurrentMoveTween:Cancel() end
+    CurrentMoveTween.Completed:Wait() -- Espera chegar
     
-    if state then
-        CurrentWaypointIndex = 1
+    -- Se ainda estiver tocando, vai pro próximo
+    if PathSettings.IsPlaying then
+        CurrentWaypointIndex = CurrentWaypointIndex + 1
         MoveToNextWaypoint()
     end
 end
 
--- 5. FUNÇÃO DE ENTRADA (F5)
---========================================================================
-
-local function TogglePathManager(state)
-    PathSettings.Enabled = state
+local function TogglePlayback(state)
+    PathSettings.IsPlaying = state
+    if not state and CurrentMoveTween then CurrentMoveTween:Cancel() end
     
     if state then
-        -- Ativa o modo de edição (Mouse livre)
-        PathSettings.MouseLocked = false
-    else
-        -- Desativa e Limpa
-        PathSettings.IsPlaying = false
-        PathSettings.MouseLocked = true
-        if CurrentMoveTween then CurrentMoveTween:Cancel() end
+        CurrentWaypointIndex = 1
+        -- Solta o mouse para não atrapalhar se estiver travado
+        if PathSettings.Enabled then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
+        MoveToNextWaypoint()
     end
-    
-    -- Atualiza Mouse State
-    local mouseBehavior = PathSettings.MouseLocked and Enum.MouseBehavior.Default or Enum.MouseBehavior.LockCenter
-    UserInputService.MouseBehavior = mouseBehavior
-    UserInputService.MouseIconEnabled = not PathSettings.MouseLocked
-    
-    LogarEvento("INFO", "Path Manager: " .. (state and "ATIVADO" or "DESATIVADO"))
 end
 
--- 6. UI PURA (Painel de Propriedades e Lista de Pontos)
+-- 5. GERENCIAMENTO DE UI PURA (COMPATIBLE COLORS)
 --========================================================================
-
-local function SetupPureUI()
-    local Gui = Instance.new("ScreenGui", CoreGui); Gui.Name = "PathEditorUI"
-    local Frame = Instance.new("Frame", Gui); Frame.Size = UDim2.new(0,250,0,300); Frame.Position = UDim2.new(0.05,0,0.1,0)
-    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35); Frame.Active = true; Frame.Draggable = true
-    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
-    
-    -- Header
-    local Title = Instance.new("TextLabel", Frame); Title.Size=UDim2.new(1,0,0,25); Title.Text="Path Recorder v1.0"; Title.BackgroundTransparency=0; Title.BackgroundColor3=Color3.fromRGB(40,40,45); Title.TextColor3=Color3.white
-    
-    -- Botões de Controle
-    local BtnPlay = Instance.new("TextButton", Frame); BtnPlay.Size=UDim2.new(0.3,0,0,25); BtnPlay.Position=UDim2.new(0.05,0,0.1,0); BtnPlay.Text="PLAY"; BtnPlay.BackgroundColor3=Color3.fromRGB(0,180,100)
-    local BtnPause = Instance.new("TextButton", Frame); BtnPause.Size=UDim2.new(0.3,0,0,25); BtnPause.Position=UDim2.new(0.35,0,0.1,0); BtnPause.Text="PAUSE"; BtnPause.BackgroundColor3=Color3.fromRGB(200,100,0)
-    local BtnClear = Instance.new("TextButton", Frame); BtnClear.Size=UDim2.new(0.3,0,0,25); BtnClear.Position=UDim2.new(0.65,0,0.1,0); BtnClear.Text="CLEAR"; BtnClear.BackgroundColor3=Color3.fromRGB(180,60,60)
-    
-    -- Lista de Pontos (Outliner Simplificado)
-    PointListScroll = Instance.new("ScrollingFrame", Frame); PointListScroll.Size=UDim2.new(1,-10,1,-70); PointListScroll.Position=UDim2.new(0.05,0,0.22,0)
-    PointListScroll.BackgroundColor3=Color3.fromRGB(35,35,40); PointListScroll.CanvasSize=UDim2.new(0,0,0,0)
-    local UIL = Instance.new("UIListLayout", PointListScroll); UIL.Padding=UDim.new(0,3)
-    
-    -- Conexão dos Botões
-    BtnPlay.MouseButton1Click:Connect(function() TogglePlayback(true) end)
-    BtnPause.MouseButton1Click:Connect(function() PathSettings.IsPlaying = false; if CurrentMoveTween then CurrentMoveTween:Cancel() end end)
-    BtnClear.MouseButton1Click:Connect(function() 
-        Waypoints = {}; for _, p in pairs(WaypointParts) do p:Destroy() end; WaypointParts = {}; UpdateVisualPath(); RefreshList()
-    end)
-    
-    return Frame
-end
-
 local function RefreshList()
-    -- Atualiza a lista visualmente
     if not PointListScroll then return end
     for _, child in pairs(PointListScroll:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
     
     local yOffset = 0
     for i, point in ipairs(Waypoints) do
-        local Item = Instance.new("Frame", PointListScroll); Item.Size=UDim2.new(1,0,0,20); Item.BackgroundTransparency=1
-        local Lbl = Instance.new("TextLabel", Item); Lbl.Text="Ponto #"..i; Lbl.Size=UDim2.new(1,0,1,0); Lbl.BackgroundTransparency=1; Lbl.TextColor3=Color3.white; Lbl.TextXAlignment=Enum.TextXAlignment.Left
+        local Item = Instance.new("Frame", PointListScroll)
+        Item.Size = UDim2.new(1, 0, 0, 25)
+        Item.BackgroundTransparency = 1
+        Item.Position = UDim2.new(0, 0, 0, yOffset)
+        
+        local Lbl = Instance.new("TextLabel", Item)
+        Lbl.Text = "Ponto #" .. i
+        Lbl.Size = UDim2.new(1, -10, 1, 0)
+        Lbl.Position = UDim2.new(0, 5, 0, 0)
+        Lbl.BackgroundTransparency = 1
+        Lbl.TextColor3 = Color3.fromRGB(255, 255, 255) -- [FIX]
+        Lbl.TextXAlignment = Enum.TextXAlignment.Left
+        Lbl.Font = Enum.Font.Code
+        Lbl.TextSize = 12
+        
         yOffset = yOffset + 25
     end
     PointListScroll.CanvasSize = UDim2.new(0, 0, 0, yOffset)
 end
 
+local function SetupPureUI()
+    ScreenGui = Instance.new("ScreenGui", CoreGui)
+    ScreenGui.Name = "PathEditorUI_v1.1"
+    ScreenGui.Enabled = false -- Começa escondido até ativar F5
+    
+    local Frame = Instance.new("Frame", ScreenGui)
+    Frame.Size = UDim2.new(0, 250, 0, 350)
+    Frame.Position = UDim2.new(0.05, 0, 0.2, 0)
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    Frame.Active = true; Frame.Draggable = true
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+    
+    -- Header
+    local Title = Instance.new("TextLabel", Frame)
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Text = "  Path Recorder v1.1 [F5]"
+    Title.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255) -- [FIX]
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 6)
+    
+    -- Botões
+    local function CreateBtn(text, col, pos_y, func)
+        local btn = Instance.new("TextButton", Frame)
+        btn.Text = text
+        btn.BackgroundColor3 = col
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255) -- [FIX]
+        btn.Size = UDim2.new(0.9, 0, 0, 30)
+        btn.Position = UDim2.new(0.05, 0, 0, pos_y)
+        btn.Font = Enum.Font.GothamBold
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+        btn.MouseButton1Click:Connect(func)
+        return btn
+    end
+    
+    CreateBtn("PLAY (Iniciar Rota)", Color3.fromRGB(0, 180, 100), 40, function() TogglePlayback(true) end)
+    CreateBtn("PAUSE (Parar)", Color3.fromRGB(200, 100, 0), 75, function() TogglePlayback(false) end)
+    CreateBtn("LIMPAR PONTOS", Color3.fromRGB(180, 60, 60), 110, function() 
+        Waypoints = {}; ClearVisuals(); RefreshList()
+        LogarEvento("AVISO", "Todos os pontos removidos.")
+    end)
+    
+    -- Lista
+    local ListBg = Instance.new("Frame", Frame)
+    ListBg.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    ListBg.Position = UDim2.new(0.05, 0, 0, 150)
+    ListBg.Size = UDim2.new(0.9, 0, 0, 180)
+    Instance.new("UICorner", ListBg).CornerRadius = UDim.new(0, 4)
+    
+    PointListScroll = Instance.new("ScrollingFrame", ListBg)
+    PointListScroll.Size = UDim2.new(1, -5, 1, -5)
+    PointListScroll.Position = UDim2.new(0, 5, 0, 5)
+    PointListScroll.BackgroundTransparency = 1
+    PointListScroll.ScrollBarThickness = 4
+end
+
+-- 6. FUNÇÃO DE ENTRADA (F5)
+--========================================================================
+local function TogglePathManager(state)
+    PathSettings.Enabled = state
+    if ScreenGui then ScreenGui.Enabled = state end
+    
+    if state then
+        PathSettings.MouseLocked = false -- Inicia com mouse solto para editar
+        UserInputService.MouseIconEnabled = true
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    else
+        PathSettings.IsPlaying = false
+        if CurrentMoveTween then CurrentMoveTween:Cancel() end
+        UserInputService.MouseIconEnabled = true
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        ClearVisuals() -- Limpa visuais ao fechar
+    end
+    
+    LogarEvento("INFO", "Path Manager: " .. (state and "ATIVADO" or "DESATIVADO"))
+end
+
 -- 7. INPUTS E ATALHOS
 --========================================================================
 
-local function HandleMouseClick(input, gameProcessed)
-    if not PathSettings.Enabled or gameProcessed then return end
-    
-    -- Clique Direito para Adicionar Ponto
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        local target = LocalPlayer:GetMouse().Hit.Position
-        
-        -- Auto-snap a superfícies (adiciona um offset de altura)
-        local ray = Workspace:Raycast(target + Vector3.new(0, 50, 0), Vector3.new(0, -100, 0))
-        local pos = ray and ray.Position or target -- Pega a posição do chão
-        
-        table.insert(Waypoints, {CFrame = CFrame.new(pos)})
-        UpdateVisualPath()
-        RefreshList()
-        LogarEvento("INFO", "Waypoint adicionado: #"..#Waypoints)
-    end
-end
-
--- Loop para Desenhar Linhas Traceline
+-- Loop para atualizar linhas 3D (Drawing API precisa ser redesenhado)
 RunService.RenderStepped:Connect(function()
-    if PathSettings.Enabled then
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp and #Waypoints > 0 then
-            -- Redesenha todas as linhas no frame da tela
-            UpdateVisualPath()
-        end
+    if PathSettings.Enabled and #Waypoints > 0 then
+        UpdateVisualPath()
     end
 end)
 
--- Conexão de Eventos
-UserInputService.InputBegan:Connect(function(input)
+UserInputService.InputBegan:Connect(function(input, gp)
+    -- F5: Toggle
     if input.KeyCode == Enum.KeyCode.F5 then
         TogglePathManager(not PathSettings.Enabled)
         if Chassi.Abas.Player and Chassi.Abas.Player:FindFirstChild("TogglePath") then
             Chassi.Abas.Player:FindFirstChild("TogglePath"):Set(PathSettings.Enabled)
         end
     end
+    
+    if not PathSettings.Enabled then return end
+    if gp then return end
+    
+    -- Clique Direito: Adicionar Ponto
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        local mousePos = LocalPlayer:GetMouse().Hit.Position
+        -- Raycast simples para chão (Snap)
+        local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Exclude; params.FilterDescendantsInstances = {LocalPlayer.Character}
+        local ray = Workspace:Raycast(mousePos + Vector3.new(0, 50, 0), Vector3.new(0, -100, 0), params)
+        local pos = ray and ray.Position or mousePos
+        
+        table.insert(Waypoints, {CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))}) -- +3 altura
+        RefreshList()
+        LogarEvento("INFO", "Ponto adicionado.")
+    end
+    
+    -- P: Alternar Mouse Lock
+    if input.KeyCode == Enum.KeyCode.P then
+        PathSettings.MouseLocked = not PathSettings.MouseLocked
+        UserInputService.MouseBehavior = PathSettings.MouseLocked and Enum.MouseBehavior.LockCenter or Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = not PathSettings.MouseLocked
+    end
 end)
-UserInputService.InputBegan:Connect(HandleMouseClick)
 
 -- 8. INICIALIZAÇÃO
 --========================================================================
 SetupPureUI()
 
 if TabPlayer then
-    pCreate("SecPath", TabPlayer, "CreateSection", "Path Recorder (F5)", "Right")
+    pCreate("SecPath", TabPlayer, "CreateSection", "Path Recorder v1.1 (Colors Fix)", "Right")
     pCreate("TogglePath", TabPlayer, "CreateToggle", {
         Name = "Ativar Path Manager [F5]",
         CurrentValue = PathSettings.Enabled,
@@ -266,11 +315,13 @@ if TabPlayer then
     pCreate("SliderSpeed", TabPlayer, "CreateSlider", {
         Name = "Velocidade Suave",
         Range = {10, 500}, Increment = 10, Suffix = " sps",
-        CurrentValue = 100,
+        CurrentValue = 50,
         Callback = function(Val) PathSettings.SmoothSpeed = Val end
     })
+    
+    pCreate("InfoPath", TabPlayer, "CreateLabel", "Botão Direito: Add Ponto | P: Mouse")
 
-    LogarEvento("SUCESSO", "Módulo Path Recorder v1.0 carregado.")
+    LogarEvento("SUCESSO", "Módulo Path Recorder v1.1 carregado.")
 else
-    LogarEvento("ERRO", "TabPlayer não encontrada para Path Recorder.")
+    LogarEvento("ERRO", "TabPlayer não encontrada.")
 end
