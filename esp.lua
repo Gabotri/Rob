@@ -1,14 +1,9 @@
 --[==[
-    MÓDULO: ESP Master (Visuals) v1.0
+    MÓDULO: ESP Master (Visuals) v1.1
     AUTOR: Sr. Gabotri (via Gemini)
-    DESCRIÇÃO: Módulo completo de ESP usando Drawing API + Highlights.
-    FUNCIONALIDADES:
-    - Box (2D), Name, Health Bar, Weapon Name.
-    - Tracers (Linhas), Distance.
-    - Skeleton (Esqueleto R6/R15).
-    - Head Dot (Ponto na cabeça).
-    - Charm (Chams/Highlight).
-    - Visibility Check (Muda de cor se estiver visível).
+    DESCRIÇÃO:
+    - [MUDANÇA] Tracers agora saem do Player (HumanoidRootPart) e não da base da tela.
+    - [MUDANÇA] Padrões: Box=OFF, HeadDot=OFF, Todo o resto=ON (Ao iniciar).
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -21,7 +16,7 @@ end
 -- 2. VARIÁVEIS E SERVIÇOS
 local LogarEvento = Chassi.LogarEvento
 local pCreate = Chassi.pCreate
-local TabMundo = Chassi.Abas.Mundo -- Vamos colocar na aba Mundo ou criar uma Visual
+local TabMundo = Chassi.Abas.Mundo 
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -29,23 +24,25 @@ local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
--- 3. CONFIGURAÇÕES (ESTADO GLOBAL)
+-- 3. CONFIGURAÇÕES (PADRÕES ALTERADOS v1.1)
 local ESP_Settings = {
-    MasterSwitch = false,
+    MasterSwitch = true, -- Já começa ligado
     -- Cores
-    ColorVisible = Color3.fromRGB(0, 255, 0),   -- Verde se visível
-    ColorHidden = Color3.fromRGB(255, 0, 0),    -- Vermelho se escondido
-    -- Toggles
-    Box = true,
+    ColorVisible = Color3.fromRGB(0, 255, 0),
+    ColorHidden = Color3.fromRGB(255, 0, 0),
+    -- Toggles (Configurados conforme pedido)
+    Box = false,        -- Pediu desligado
+    HeadDot = false,    -- Pediu desligado
+    
+    -- "O Resto Ligado"
     Name = true,
     Health = true,
     Weapon = true,
     Distance = true,
-    Tracers = false,
-    Skeleton = false,
-    HeadDot = false,
-    Charm = false,   -- Highlight/Chams
-    VisCheck = true  -- Checagem de parede
+    Tracers = true,
+    Skeleton = true,
+    Charm = true,
+    VisCheck = true
 }
 
 -- Cache de Objetos de Desenho
@@ -69,16 +66,15 @@ local function CreateESPObject(player)
         HealthBarOutline = NewDrawing("Square"),
         HealthBar = NewDrawing("Square"),
         HeadDot = NewDrawing("Circle"),
-        Skeleton = {}, -- Tabela para armazenar linhas do esqueleto
-        Highlight = nil -- Instância do Roblox (não Drawing)
+        Skeleton = {},
+        Highlight = nil 
     }
     
-    -- Configurações Iniciais de Texto
+    -- Configurações Iniciais
     Objects.Name.Center = true; Objects.Name.Outline = true; Objects.Name.Size = 14
     Objects.Distance.Center = true; Objects.Distance.Outline = true; Objects.Distance.Size = 12
     Objects.Weapon.Center = true; Objects.Weapon.Outline = true; Objects.Weapon.Size = 12
     
-    -- Configurações Iniciais de Box
     Objects.Box.Thickness = 1; Objects.Box.Filled = false
     Objects.HealthBarOutline.Thickness = 1; Objects.HealthBarOutline.Filled = false
     Objects.HealthBar.Filled = true
@@ -106,7 +102,6 @@ end
 local function GetColor(playerChar, part)
     if not ESP_Settings.VisCheck then return ESP_Settings.ColorVisible end
     
-    -- Raycast simples para checar visibilidade
     local origin = Camera.CFrame.Position
     local direction = (part.Position - origin)
     local params = RaycastParams.new()
@@ -114,18 +109,13 @@ local function GetColor(playerChar, part)
     params.FilterType = Enum.RaycastFilterType.Exclude
     
     local result = Workspace:Raycast(origin, direction, params)
-    if result then 
-        return ESP_Settings.ColorHidden -- Bateu em parede
-    else 
-        return ESP_Settings.ColorVisible -- Livre
-    end
+    if result then return ESP_Settings.ColorHidden else return ESP_Settings.ColorVisible end
 end
 
 local function UpdateSkeleton(player, Character, color)
     local RigType = (Character:FindFirstChild("UpperTorso")) and "R15" or "R6"
     local Connections = {}
     
-    -- Mapa de Conexões (Joints)
     if RigType == "R15" then
         Connections = {
             {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"LowerTorso", "LeftUpperLeg"},
@@ -134,14 +124,13 @@ local function UpdateSkeleton(player, Character, color)
             {"LeftUpperArm", "LeftLowerArm"}, {"LeftLowerArm", "LeftHand"}, {"UpperTorso", "RightUpperArm"},
             {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"}
         }
-    else -- R6
+    else
         Connections = {
             {"Head", "Torso"}, {"Torso", "Left Leg"}, {"Torso", "Right Leg"},
             {"Torso", "Left Arm"}, {"Torso", "Right Arm"}
         }
     end
 
-    -- Garante linhas suficientes
     local cache = ESP_Cache[player].Skeleton
     for i = 1, #Connections do
         if not cache[i] then cache[i] = NewDrawing("Line") end
@@ -169,6 +158,13 @@ local function UpdateSkeleton(player, Character, color)
 end
 
 RunService.RenderStepped:Connect(function()
+    -- Pre-calcula a posição do LocalPlayer para os Tracers
+    local myTracerOrigin = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2) -- Padrão Centro
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local myPos, myVis = Camera:WorldToViewportPoint(LocalPlayer.Character.HumanoidRootPart.Position)
+        myTracerOrigin = Vector2.new(myPos.X, myPos.Y)
+    end
+
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             if not ESP_Cache[player] then ESP_Cache[player] = CreateESPObject(player) end
@@ -181,10 +177,9 @@ RunService.RenderStepped:Connect(function()
             if ESP_Settings.MasterSwitch and char and hrp and hum and hum.Health > 0 then
                 local vector, onScreen = Camera:WorldToViewportPoint(hrp.Position)
                 local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                local mainColor = GetColor(char, hrp) -- Cor baseada na visibilidade
+                local mainColor = GetColor(char, hrp)
                 
                 if onScreen then
-                    -- Cálculos de Tamanho da Box
                     local scaleFactor = 1000 / dist
                     local width = 3 * scaleFactor
                     local height = 5 * scaleFactor
@@ -199,11 +194,11 @@ RunService.RenderStepped:Connect(function()
                         objs.Box.Color = mainColor
                     else objs.Box.Visible = false end
                     
-                    -- 2. TRACERS (Bottom to Player)
+                    -- 2. TRACERS (Do Player até o Inimigo)
                     if ESP_Settings.Tracers then
                         objs.Tracer.Visible = true
-                        objs.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                        objs.Tracer.To = Vector2.new(vector.X, vector.Y + height/2) -- Pé do player
+                        objs.Tracer.From = myTracerOrigin -- Origem calculada acima (No LocalPlayer)
+                        objs.Tracer.To = Vector2.new(vector.X, vector.Y) -- Centro do inimigo
                         objs.Tracer.Color = mainColor
                     else objs.Tracer.Visible = false end
 
@@ -223,36 +218,30 @@ RunService.RenderStepped:Connect(function()
                         objs.Distance.Color = Color3.new(1, 1, 1)
                     else objs.Distance.Visible = false end
                     
-                    -- 5. WEAPON/TOOL
+                    -- 5. WEAPON
                     if ESP_Settings.Weapon then
                         local tool = char:FindFirstChildWhichIsA("Tool")
                         if tool then
                             objs.Weapon.Visible = true
                             objs.Weapon.Text = tool.Name
-                            objs.Weapon.Position = Vector2.new(vector.X, y + height + 15) -- Abaixo da distancia
+                            objs.Weapon.Position = Vector2.new(vector.X, y + height + 15)
                             objs.Weapon.Color = Color3.new(0.8, 0.8, 1)
-                        else
-                            objs.Weapon.Visible = false
-                        end
+                        else objs.Weapon.Visible = false end
                     else objs.Weapon.Visible = false end
 
                     -- 6. HEALTH BAR
                     if ESP_Settings.Health then
                         local healthPercent = hum.Health / hum.MaxHealth
                         local barHeight = height * healthPercent
-                        
                         objs.HealthBarOutline.Visible = true
                         objs.HealthBarOutline.Size = Vector2.new(4, height)
                         objs.HealthBarOutline.Position = Vector2.new(x - 6, y)
-                        
                         objs.HealthBar.Visible = true
                         objs.HealthBar.Size = Vector2.new(2, barHeight)
                         objs.HealthBar.Position = Vector2.new(x - 5, y + (height - barHeight))
-                        -- Cor Gradiente (Verde -> Vermelho)
                         objs.HealthBar.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
                     else
-                        objs.HealthBarOutline.Visible = false
-                        objs.HealthBar.Visible = false
+                        objs.HealthBarOutline.Visible = false; objs.HealthBar.Visible = false
                     end
                     
                     -- 7. HEAD DOT
@@ -274,7 +263,6 @@ RunService.RenderStepped:Connect(function()
                     if ESP_Settings.Skeleton then
                         UpdateSkeleton(player, char, mainColor)
                     else
-                        -- Esconde esqueleto se desativado
                         for _, line in pairs(objs.Skeleton) do line.Visible = false end
                     end
                     
@@ -298,9 +286,8 @@ RunService.RenderStepped:Connect(function()
                     else
                         if objs.Highlight then objs.Highlight.Enabled = false end
                     end
-                    
                 else
-                    -- Off Screen: Esconde tudo
+                    -- Esconde tudo se fora da tela
                     for k, obj in pairs(objs) do
                         if k == "Skeleton" then for _, line in pairs(obj) do line.Visible = false end
                         elseif k == "Highlight" and obj then obj.Enabled = false
@@ -308,7 +295,7 @@ RunService.RenderStepped:Connect(function()
                     end
                 end
             else
-                -- Player Morto ou ESP Desligado: Esconde/Remove
+                -- Player Morto/Invalido
                 if objs then
                     for k, obj in pairs(objs) do
                         if k == "Skeleton" then for _, line in pairs(obj) do line.Visible = false end
@@ -326,27 +313,27 @@ Players.PlayerRemoving:Connect(function(p) RemoveESP(p) end)
 -- 6. INTERFACE GRÁFICA (Tab Mundo)
 --========================================================================
 if TabMundo then
-    pCreate("SecESP", TabMundo, "CreateSection", "Visuals / ESP", "Right")
+    pCreate("SecESP", TabMundo, "CreateSection", "Visuals / ESP v1.1", "Right")
     
     pCreate("ToggleESPMaster", TabMundo, "CreateToggle", {
         Name = "Ativar ESP (Master Switch)",
-        CurrentValue = false,
+        CurrentValue = ESP_Settings.MasterSwitch,
         Callback = function(Val) ESP_Settings.MasterSwitch = Val end
     })
     
     -- Opções Visuais
-    pCreate("ToggleBox", TabMundo, "CreateToggle", { Name = "Box (Caixa 2D)", CurrentValue = true, Callback = function(v) ESP_Settings.Box = v end })
-    pCreate("ToggleName", TabMundo, "CreateToggle", { Name = "Names (Nomes)", CurrentValue = true, Callback = function(v) ESP_Settings.Name = v end })
-    pCreate("ToggleHealth", TabMundo, "CreateToggle", { Name = "Health Bar (Vida)", CurrentValue = true, Callback = function(v) ESP_Settings.Health = v end })
-    pCreate("ToggleWeapon", TabMundo, "CreateToggle", { Name = "Weapon (Ferramenta)", CurrentValue = true, Callback = function(v) ESP_Settings.Weapon = v end })
-    pCreate("ToggleDist", TabMundo, "CreateToggle", { Name = "Distance (Distância)", CurrentValue = true, Callback = function(v) ESP_Settings.Distance = v end })
-    pCreate("ToggleTracer", TabMundo, "CreateToggle", { Name = "Tracers (Linhas)", CurrentValue = false, Callback = function(v) ESP_Settings.Tracers = v end })
-    pCreate("ToggleSkel", TabMundo, "CreateToggle", { Name = "Skeleton (Esqueleto)", CurrentValue = false, Callback = function(v) ESP_Settings.Skeleton = v end })
-    pCreate("ToggleHead", TabMundo, "CreateToggle", { Name = "Head Dot (Ponto Cabeça)", CurrentValue = false, Callback = function(v) ESP_Settings.HeadDot = v end })
-    pCreate("ToggleCharm", TabMundo, "CreateToggle", { Name = "Charm (Chams Highlight)", CurrentValue = false, Callback = function(v) ESP_Settings.Charm = v end })
-    pCreate("ToggleVis", TabMundo, "CreateToggle", { Name = "Visibility Check (Cor)", CurrentValue = true, Callback = function(v) ESP_Settings.VisCheck = v end })
+    pCreate("ToggleBox", TabMundo, "CreateToggle", { Name = "Box (Caixa 2D)", CurrentValue = ESP_Settings.Box, Callback = function(v) ESP_Settings.Box = v end })
+    pCreate("ToggleName", TabMundo, "CreateToggle", { Name = "Names (Nomes)", CurrentValue = ESP_Settings.Name, Callback = function(v) ESP_Settings.Name = v end })
+    pCreate("ToggleHealth", TabMundo, "CreateToggle", { Name = "Health Bar (Vida)", CurrentValue = ESP_Settings.Health, Callback = function(v) ESP_Settings.Health = v end })
+    pCreate("ToggleWeapon", TabMundo, "CreateToggle", { Name = "Weapon (Ferramenta)", CurrentValue = ESP_Settings.Weapon, Callback = function(v) ESP_Settings.Weapon = v end })
+    pCreate("ToggleDist", TabMundo, "CreateToggle", { Name = "Distance (Distância)", CurrentValue = ESP_Settings.Distance, Callback = function(v) ESP_Settings.Distance = v end })
+    pCreate("ToggleTracer", TabMundo, "CreateToggle", { Name = "Tracers (Linhas - Do Player)", CurrentValue = ESP_Settings.Tracers, Callback = function(v) ESP_Settings.Tracers = v end })
+    pCreate("ToggleSkel", TabMundo, "CreateToggle", { Name = "Skeleton (Esqueleto)", CurrentValue = ESP_Settings.Skeleton, Callback = function(v) ESP_Settings.Skeleton = v end })
+    pCreate("ToggleHead", TabMundo, "CreateToggle", { Name = "Head Dot (Ponto Cabeça)", CurrentValue = ESP_Settings.HeadDot, Callback = function(v) ESP_Settings.HeadDot = v end })
+    pCreate("ToggleCharm", TabMundo, "CreateToggle", { Name = "Charm (Chams Highlight)", CurrentValue = ESP_Settings.Charm, Callback = function(v) ESP_Settings.Charm = v end })
+    pCreate("ToggleVis", TabMundo, "CreateToggle", { Name = "Visibility Check (Cor)", CurrentValue = ESP_Settings.VisCheck, Callback = function(v) ESP_Settings.VisCheck = v end })
 
-    LogarEvento("SUCESSO", "Módulo ESP Master v1.0 carregado.")
+    LogarEvento("SUCESSO", "Módulo ESP Master v1.1 carregado.")
 else
     LogarEvento("ERRO", "TabMundo não encontrada para o ESP.")
 end
