@@ -1,11 +1,10 @@
 --[==[
-    MÓDULO: Freecam (6DOF) v1.3
+    MÓDULO: Freecam (6DOF) v1.4
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - [FIX CRÍTICO] Câmera Virtual: Usa CFrame interno para ignorar travas do jogo.
-    - [FIX] Prioridade: Usa BindToRenderStep para sobrescrever scripts do jogo.
-    - [FIX] Mouse Lock: Trava o mouse no centro para rotação infinita.
-    - Player travado e invisível (Ghost Mode).
+    - [FIX CRÍTICO] Corrigido erro de Enum (HumanoidDisplayDistanceType).
+    - Câmera Virtual (Ignora travas do jogo).
+    - Mouse Lock + Ghost Mode (Player invisível e imóvel).
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -35,13 +34,12 @@ local FreecamSettings = {
     BaseSpeed = 50,         
     TurboMultiplier = 5,    
     SlowMultiplier = 0.2,   
-    Sensitivity = 0.25,  -- Aumentei um pouco para ficar mais responsivo
+    Sensitivity = 0.25,
     TweenDuration = 0.5     
 }
 
--- Variáveis de Estado (Câmera Virtual)
-local VirtualRotation = Vector2.new() -- Armazena Pitch/Yaw
-local VirtualPosition = Vector3.new() -- Armazena Posição X/Y/Z
+local VirtualRotation = Vector2.new() 
+local VirtualPosition = Vector3.new()
 local OriginalWalkSpeed = 16
 local OriginalCameraType = Enum.CameraType.Custom
 
@@ -57,13 +55,13 @@ local function ApplyGhostMode(state)
         if hrp and hum then
             -- Física
             hrp.CanCollide = not state
-            hrp.Anchored = state -- Ancorar previne que física do jogo empurre o boneco
+            hrp.Anchored = state 
             
             -- Movimento
             if state then
                 OriginalWalkSpeed = hum.WalkSpeed
                 hum.WalkSpeed = 0
-                hum.PlatformStand = true -- Garante que não ande
+                hum.PlatformStand = true 
             else
                 hum.WalkSpeed = OriginalWalkSpeed
                 hum.PlatformStand = false
@@ -79,8 +77,14 @@ local function ApplyGhostMode(state)
                 end
             end
             
-            -- Oculta UI do boneco
-            hum.DisplayDistanceType = state and Enum.DisplayDistanceType.None or Enum.DisplayDistanceType.Model
+            -- [FIX] Oculta UI do boneco usando o Enum CORRETO
+            if state then
+                hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                hum.NameDisplayDistance = 0
+            else
+                hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+                hum.NameDisplayDistance = 100
+            end
         end
     end
 end
@@ -93,24 +97,18 @@ local function ToggleFreecam(state)
         -- ATIVAR
         OriginalCameraType = Camera.CameraType
         
-        -- 1. Captura a posição inicial exata da câmera
         local startCFrame = Camera.CFrame
         VirtualPosition = startCFrame.Position
         
-        -- Converte a rotação atual para Vector2 (Pitch/Yaw)
         local rx, ry, _ = startCFrame:ToEulerAnglesYXZ()
         VirtualRotation = Vector2.new(rx, ry)
         
-        -- 2. Configura a Câmera
         Camera.CameraType = Enum.CameraType.Scriptable
         UserInputService.MouseIconEnabled = false
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter -- Trava mouse no centro
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter 
         
-        -- 3. Aplica Ghost Mode
         ApplyGhostMode(true)
         
-        -- 4. Inicia o Loop com ALTA PRIORIDADE
-        -- "Camera + 1" garante que rodamos DEPOIS do sistema de câmera do Roblox
         RunService:BindToRenderStep("GabotriFreecamLoop", Enum.RenderPriority.Camera.Value + 1, UpdateCameraStep)
         
         LogarEvento("INFO", "Freecam ATIVADO (Virtual Mode).")
@@ -125,7 +123,6 @@ local function ToggleFreecam(state)
         
         ApplyGhostMode(false)
         
-        -- Tween de volta pro boneco (Visual)
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
             Camera.CFrame = LocalPlayer.Character.Head.CFrame
         end
@@ -139,22 +136,16 @@ end
 function UpdateCameraStep(deltaTime)
     if not FreecamSettings.Active then return end
     
-    -- A. ROTAÇÃO (MOUSE)
+    -- A. ROTAÇÃO
     local mouseDelta = UserInputService:GetMouseDelta()
-    local sens = FreecamSettings.Sensitivity * (math.pi / 180) -- Converte graus para radianos
+    local sens = FreecamSettings.Sensitivity * (math.pi / 180)
     
     VirtualRotation = VirtualRotation - Vector2.new(mouseDelta.Y * sens, mouseDelta.X * sens)
+    VirtualRotation = Vector2.new(math.clamp(VirtualRotation.X, -math.rad(89), math.rad(89)), VirtualRotation.Y)
     
-    -- Limita o Pitch (Olhar pra cima/baixo) para não dar cambalhota (89 graus)
-    VirtualRotation = Vector2.new(
-        math.clamp(VirtualRotation.X, -math.rad(89), math.rad(89)),
-        VirtualRotation.Y
-    )
-    
-    -- Cria o CFrame de Rotação Base
     local rotationCFrame = CFrame.fromEulerAnglesYXZ(VirtualRotation.X, VirtualRotation.Y, 0)
     
-    -- B. MOVIMENTO (TECLADO)
+    -- B. MOVIMENTO
     local speed = FreecamSettings.BaseSpeed
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then speed = speed * FreecamSettings.TurboMultiplier end
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then speed = speed * FreecamSettings.SlowMultiplier end
@@ -167,25 +158,19 @@ function UpdateCameraStep(deltaTime)
     if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveDir = moveDir + Vector3.new(0, 1, 0) end
     if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveDir = moveDir + Vector3.new(0, -1, 0) end
     
-    -- Calcula o movimento relativo para onde a câmera está olhando
-    -- VectorToWorldSpace transforma o vetor de movimento local (WASD) em global baseado na rotação
     local worldMove = rotationCFrame:VectorToWorldSpace(moveDir)
     
-    -- Aplica o movimento na Posição Virtual
     if moveDir.Magnitude > 0 then
-        -- Normaliza para velocidade constante na diagonal e multiplica pelo speed e delta
         VirtualPosition = VirtualPosition + (worldMove.Unit * speed * deltaTime)
     end
     
-    -- C. APLICAÇÃO FINAL (FORCE)
     Camera.CFrame = CFrame.new(VirtualPosition) * rotationCFrame
 end
 
 -- 6. ATALHOS E EVENTOS
 --========================================================================
--- Sincronia ao renascer
 Players.LocalPlayer.CharacterAdded:Connect(function()
-    if FreecamSettings.Active then ToggleFreecam(false) end -- Desliga se morrer pra evitar bugs
+    if FreecamSettings.Active then ToggleFreecam(false) end 
 end)
 
 UserInputService.InputBegan:Connect(function(input, gp)
@@ -193,7 +178,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         ToggleFreecam(not FreecamSettings.Active)
         
-        -- Sync UI
         if Chassi.Abas.Player and Chassi.Abas.Player:FindFirstChild("ToggleFreecam") then
             Chassi.Abas.Player:FindFirstChild("ToggleFreecam"):Set(FreecamSettings.Active)
         end
@@ -203,7 +187,7 @@ end)
 -- 7. UI NO CHASSI
 --========================================================================
 if TabPlayer then
-    pCreate("SecFreecam", TabPlayer, "CreateSection", "Freecam v1.3 (Virtual Mode)", "Left")
+    pCreate("SecFreecam", TabPlayer, "CreateSection", "Freecam v1.4 (Fix Enum)", "Left")
     
     pCreate("ToggleFreecam", TabPlayer, "CreateToggle", {
         Name = "Ativar Freecam [F4]",
@@ -227,7 +211,7 @@ if TabPlayer then
     
     pCreate("InfoControls", TabPlayer, "CreateLabel", "Controles: WASD, Q/E, SHIFT, Mouse")
 
-    LogarEvento("SUCESSO", "Módulo Freecam v1.3 (Virtual Lock) carregado.")
+    LogarEvento("SUCESSO", "Módulo Freecam v1.4 (Enum Fix) carregado.")
 else
     LogarEvento("ERRO", "TabPlayer não encontrada.")
 end
