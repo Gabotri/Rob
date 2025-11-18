@@ -1,10 +1,10 @@
 --[==[
-    MÓDULO: Freecam (6DOF) v1.5 (UI Config & Mouse Unlock)
+    MÓDULO: Freecam (6DOF) v1.6 (TP & Coords)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - [NOVO] Painel de Configurações (Speed, Sens, FOV).
-    - [NOVO] Tecla 'Left Alt' para destravar mouse e usar a UI sem sair do Freecam.
-    - [FIX] Zoom/FOV integrado.
+    - [MUDANÇA] Atalho de Mouse alterado para 'P'.
+    - [NOVO] Mostrador de Coordenadas em tempo real na UI.
+    - [NOVO] Botão "TP Player Here" (Traz o boneco para a câmera).
     - Câmera Virtual e Ghost Mode mantidos.
 ]==]
 
@@ -33,12 +33,12 @@ local LocalPlayer = Players.LocalPlayer
 -- 3. CONFIGURAÇÕES & ESTADO
 local FreecamSettings = {
     Active = false,
-    MouseLocked = true,     -- Controla se estamos girando ou clicando
+    MouseLocked = true,     
     BaseSpeed = 50,         
     TurboMultiplier = 5,    
     SlowMultiplier = 0.2,   
     Sensitivity = 0.25,
-    FOV = 70,               -- [NOVO] Campo de visão
+    FOV = 70,               
     TweenDuration = 0.5     
 }
 
@@ -48,7 +48,7 @@ local OriginalWalkSpeed = 16
 local OriginalCameraType = Enum.CameraType.Custom
 
 -- UI References
-local ScreenGui, SpeedInput, SensInput, FOVInput
+local ScreenGui, CoordsLabel -- Para atualizar no loop
 
 -- 4. FUNÇÕES AUXILIARES
 --========================================================================
@@ -104,32 +104,37 @@ local function UpdateMouseState()
     end
 end
 
+local function TeleportPlayerToCam()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        -- Move o HRP para a posição da câmera
+        LocalPlayer.Character.HumanoidRootPart.CFrame = Camera.CFrame
+        LogarEvento("INFO", "Player teleportado para a Câmera.")
+    end
+end
+
 -- Lógica Principal do Freecam
 local function ToggleFreecam(state)
     FreecamSettings.Active = state
-    FreecamSettings.MouseLocked = state -- Reseta para travado ao ativar
+    FreecamSettings.MouseLocked = state 
     
-    -- UI Visibilidade
     if ScreenGui then ScreenGui.Enabled = state end
 
     if state then
-        -- ATIVAR
         OriginalCameraType = Camera.CameraType
         local startCFrame = Camera.CFrame
         VirtualPosition = startCFrame.Position
         local rx, ry, _ = startCFrame:ToEulerAnglesYXZ()
         VirtualRotation = Vector2.new(rx, ry)
-        FreecamSettings.FOV = Camera.FieldOfView -- Pega FOV atual
+        FreecamSettings.FOV = Camera.FieldOfView 
 
         Camera.CameraType = Enum.CameraType.Scriptable
         UpdateMouseState()
         ApplyGhostMode(true)
         
         RunService:BindToRenderStep("GabotriFreecamLoop", Enum.RenderPriority.Camera.Value + 1, UpdateCameraStep)
-        LogarEvento("INFO", "Freecam ATIVADO. Pressione [Left Alt] para liberar o mouse.")
+        LogarEvento("INFO", "Freecam ATIVADO. Pressione [P] para cursor.")
         
     else
-        -- DESATIVAR
         RunService:UnbindFromRenderStep("GabotriFreecamLoop")
         Camera.CameraType = OriginalCameraType
         UpdateMouseState()
@@ -147,18 +152,22 @@ end
 function UpdateCameraStep(deltaTime)
     if not FreecamSettings.Active then return end
     
-    -- A. ROTAÇÃO (Só se o mouse estiver travado)
+    -- Atualiza UI de Coordenadas
+    if CoordsLabel then
+        CoordsLabel.Text = string.format("X: %.0f  Y: %.0f  Z: %.0f", VirtualPosition.X, VirtualPosition.Y, VirtualPosition.Z)
+    end
+    
+    -- Rotação
     if FreecamSettings.MouseLocked then
         local mouseDelta = UserInputService:GetMouseDelta()
         local sens = FreecamSettings.Sensitivity * (math.pi / 180)
-        
         VirtualRotation = VirtualRotation - Vector2.new(mouseDelta.Y * sens, mouseDelta.X * sens)
         VirtualRotation = Vector2.new(math.clamp(VirtualRotation.X, -math.rad(89), math.rad(89)), VirtualRotation.Y)
     end
     
     local rotationCFrame = CFrame.fromEulerAnglesYXZ(VirtualRotation.X, VirtualRotation.Y, 0)
     
-    -- B. MOVIMENTO (TECLADO)
+    -- Movimento
     local speed = FreecamSettings.BaseSpeed
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then speed = speed * FreecamSettings.TurboMultiplier end
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then speed = speed * FreecamSettings.SlowMultiplier end
@@ -177,55 +186,71 @@ function UpdateCameraStep(deltaTime)
         VirtualPosition = VirtualPosition + (worldMove.Unit * speed * deltaTime)
     end
     
-    -- C. APLICAÇÃO FINAL
     Camera.CFrame = CFrame.new(VirtualPosition) * rotationCFrame
-    Camera.FieldOfView = FreecamSettings.FOV -- Aplica Zoom
+    Camera.FieldOfView = FreecamSettings.FOV 
 end
 
--- 6. UI DE CONFIGURAÇÃO (PURA)
+-- 6. UI DE CONFIGURAÇÃO (PURA ATUALIZADA)
 --========================================================================
 ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FreecamConfigUI"
+ScreenGui.Name = "FreecamConfigUI_v1.6"
 ScreenGui.Parent = CoreGui
 ScreenGui.Enabled = false
 ScreenGui.ResetOnSpawn = false
 
 local MainFrame = Instance.new("Frame", ScreenGui)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-MainFrame.Position = UDim2.new(0.8, 0, 0.7, 0) -- Canto inferior direito
-MainFrame.Size = UDim2.new(0, 220, 0, 160)
+MainFrame.Position = UDim2.new(0.8, 0, 0.65, 0) 
+MainFrame.Size = UDim2.new(0, 220, 0, 230) -- Aumentado para caber novos itens
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
 local Title = Instance.new("TextLabel", MainFrame)
-Title.Text = "  Freecam Config [Alt]"; Title.Size = UDim2.new(1,0,0,25); Title.BackgroundColor3 = Color3.fromRGB(35,35,40); Title.TextColor3 = Color3.fromRGB(255,255,255); Title.Font = Enum.Font.GothamBold; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.TextSize = 12
+Title.Text = "  Freecam [P]"; Title.Size = UDim2.new(1,0,0,25); Title.BackgroundColor3 = Color3.fromRGB(35,35,40); Title.TextColor3 = Color3.fromRGB(255,255,255); Title.Font = Enum.Font.GothamBold; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.TextSize = 12
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
--- Filler do título
 local HF = Instance.new("Frame", Title); HF.BorderSizePixel=0; HF.BackgroundColor3=Title.BackgroundColor3; HF.Size=UDim2.new(1,0,0,5); HF.Position=UDim2.new(0,0,1,-5); HF.ZIndex=0
 
 local Container = Instance.new("Frame", MainFrame)
 Container.BackgroundTransparency = 1; Container.Position = UDim2.new(0, 10, 0, 30); Container.Size = UDim2.new(1, -20, 1, -30)
 local UIList = Instance.new("UIListLayout", Container); UIList.Padding = UDim.new(0, 8); UIList.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Helper de Slider Simples (TextBox)
+-- [NOVO] Label de Coordenadas
+CoordsLabel = Instance.new("TextLabel", Container)
+CoordsLabel.Size = UDim2.new(1, 0, 0, 20)
+CoordsLabel.BackgroundTransparency = 1
+CoordsLabel.Text = "X: 0  Y: 0  Z: 0"
+CoordsLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Ciano
+CoordsLabel.Font = Enum.Font.Code
+CoordsLabel.TextSize = 11
+
+-- [NOVO] Botão TP Player
+local BtnTP = Instance.new("TextButton", Container)
+BtnTP.Size = UDim2.new(1, 0, 0, 25)
+BtnTP.Text = "TP PLAYER TO CAM"
+BtnTP.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+BtnTP.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnTP.Font = Enum.Font.GothamBold
+BtnTP.TextSize = 10
+Instance.new("UICorner", BtnTP).CornerRadius = UDim.new(0, 4)
+BtnTP.MouseButton1Click:Connect(TeleportPlayerToCam)
+
+local Divider = Instance.new("Frame", Container); Divider.Size=UDim2.new(1,0,0,1); Divider.BackgroundColor3=Color3.fromRGB(60,60,60); Divider.BorderSizePixel=0
+
+-- Sliders
 local function CreateInput(text, default, callback)
     local Frame = Instance.new("Frame", Container); Frame.Size = UDim2.new(1,0,0,30); Frame.BackgroundTransparency = 1
     local Lbl = Instance.new("TextLabel", Frame); Lbl.Text = text; Lbl.Size = UDim2.new(0.6,0,1,0); Lbl.TextColor3 = Color3.fromRGB(200,200,200); Lbl.BackgroundTransparency = 1; Lbl.Font = Enum.Font.Gotham; Lbl.TextXAlignment = Enum.TextXAlignment.Left; Lbl.TextSize = 11
     local Box = Instance.new("TextBox", Frame); Box.Text = tostring(default); Box.Size = UDim2.new(0.35,0,0.8,0); Box.Position = UDim2.new(0.65,0,0.1,0); Box.BackgroundColor3 = Color3.fromRGB(50,50,55); Box.TextColor3 = Color3.fromRGB(255,255,255); Box.Font = Enum.Font.GothamBold; Box.TextSize = 11
     Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 4)
-    
-    Box.FocusLost:Connect(function()
-        local num = tonumber(Box.Text)
-        if num then callback(num) end
-    end)
+    Box.FocusLost:Connect(function() local num = tonumber(Box.Text); if num then callback(num) end end)
     return Box
 end
 
-SpeedInput = CreateInput("Speed (Studs)", FreecamSettings.BaseSpeed, function(v) FreecamSettings.BaseSpeed = v end)
-SensInput = CreateInput("Sensibilidade", FreecamSettings.Sensitivity, function(v) FreecamSettings.Sensitivity = v end)
-FOVInput = CreateInput("FOV (Zoom)", FreecamSettings.FOV, function(v) FreecamSettings.FOV = math.clamp(v, 1, 120) end)
+CreateInput("Speed (Studs)", FreecamSettings.BaseSpeed, function(v) FreecamSettings.BaseSpeed = v end)
+CreateInput("Sensibilidade", FreecamSettings.Sensitivity, function(v) FreecamSettings.Sensitivity = v end)
+CreateInput("FOV (Zoom)", FreecamSettings.FOV, function(v) FreecamSettings.FOV = math.clamp(v, 1, 120) end)
 
 -- 7. ATALHOS E EVENTOS
 --========================================================================
@@ -238,14 +263,13 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == Enum.KeyCode.F4 then
         if gp then return end
         ToggleFreecam(not FreecamSettings.Active)
-        
         if Chassi.Abas.Player and Chassi.Abas.Player:FindFirstChild("ToggleFreecam") then
             Chassi.Abas.Player:FindFirstChild("ToggleFreecam"):Set(FreecamSettings.Active)
         end
     end
 
-    -- Left Alt: Toggle Mouse Lock (Só se freecam ativo)
-    if input.KeyCode == Enum.KeyCode.LeftAlt then
+    -- [MUDANÇA] P: Toggle Mouse Lock
+    if input.KeyCode == Enum.KeyCode.P then
         if FreecamSettings.Active then
             FreecamSettings.MouseLocked = not FreecamSettings.MouseLocked
             UpdateMouseState()
@@ -253,10 +277,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- 8. UI NO CHASSI (Aba Player - Sync)
+-- 8. UI NO CHASSI
 --========================================================================
 if TabPlayer then
-    pCreate("SecFreecam", TabPlayer, "CreateSection", "Freecam v1.5 (UI Config)", "Left")
+    pCreate("SecFreecam", TabPlayer, "CreateSection", "Freecam v1.6 (TP & P)", "Left")
     
     pCreate("ToggleFreecam", TabPlayer, "CreateToggle", {
         Name = "Ativar Freecam [F4]",
@@ -264,9 +288,9 @@ if TabPlayer then
         Callback = ToggleFreecam
     })
     
-    pCreate("InfoControls", TabPlayer, "CreateLabel", "Use 'Left Alt' para liberar o mouse e configurar.")
+    pCreate("InfoControls", TabPlayer, "CreateLabel", "Use 'P' para cursor. Menu UI disponível.")
     
-    LogarEvento("SUCESSO", "Módulo Freecam v1.5 (Mouse Control) carregado.")
+    LogarEvento("SUCESSO", "Módulo Freecam v1.6 (TP & Coords) carregado.")
 else
     LogarEvento("ERRO", "TabPlayer não encontrada.")
 end
