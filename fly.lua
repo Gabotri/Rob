@@ -1,17 +1,19 @@
 --[==[
-    MÓDULO: Fly (Voo) v2.0
+    MÓDULO: Fly (Voo) v2.1
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: Adiciona Toggle, Slider de Velocidade e atalho 'F' na Aba Player.
-    ATUALIZAÇÃO v2.0:
-    - Adicionado Slider para controlar Humanoid.WalkSpeed.
-    - Lógica 'SetFlyState' agora salva e restaura o WalkSpeed original.
+    ATUALIZAÇÃO v2.1:
+    - [FIX] Corrigido o erro de hierarquia. Elementos (Toggle, Slider) agora são
+      criados como filhos da 'TabPlayer', não da 'SecMovimento'.
+    - [FIX] Removido 'pCallback' do 'CreateSlider' para evitar spam no console.
+    - [FIX] Adicionado 'pcall' interno na 'SetFlySpeed' para segurança.
 ]==]
 
 -- 1. PUXA O CHASSI (A "COLA")
 --========================================================================
 local Chassi = _G.GABOTRI_CHASSI
 if not Chassi then
-    warn("MÓDULO FLY v2.0: O Chassi Autoloader não foi encontrado.")
+    warn("MÓDULO FLY v2.1: O Chassi Autoloader não foi encontrado.")
     return
 end
 
@@ -23,7 +25,7 @@ local pCreate = Chassi.pCreate
 local Sirius = Chassi.Sirius
 local TabPlayer = Chassi.Abas.Player
 
-LogarEvento("INFO", "Módulo 'Fly v2.0' iniciando carregamento...")
+LogarEvento("INFO", "Módulo 'Fly v2.1' iniciando carregamento...")
 
 -- Serviços do Roblox
 local Players = game:GetService("Players")
@@ -47,11 +49,11 @@ end
 
 -- Esta função agora controla PlatformStand E WalkSpeed
 local function SetFlyState(Value)
-    LogarEvento("CALLBACK", "SetFlyState (Fly v2.0) chamado com: " .. tostring(Value))
+    LogarEvento("CALLBACK", "SetFlyState (Fly v2.1) chamado com: " .. tostring(Value))
     
     local Humanoid = GetHumanoid()
     if not Humanoid then
-        LogarEvento("ERRO", "Fly v2.0: Humanoid não encontrado.")
+        LogarEvento("ERRO", "Fly v2.1: Humanoid não encontrado.")
         return
     end
     
@@ -63,7 +65,7 @@ local function SetFlyState(Value)
         Humanoid.WalkSpeed = currentFlySpeed   -- Aplica a velocidade de voo
         
         spawn(function()
-            LogarEvento("INFO", "Fly v2.0: Loop de voo iniciado.")
+            LogarEvento("INFO", "Fly v2.1: Loop de voo iniciado.")
             while _G.FlyLoopActive do
                 Humanoid.PlatformStand = true
                 RunService.Heartbeat:Wait()
@@ -71,7 +73,7 @@ local function SetFlyState(Value)
             -- Garante que saia do PlatformStand ao desligar
             Humanoid.PlatformStand = false
             Humanoid.WalkSpeed = DEFAULT_WALKSPEED -- Restaura a velocidade
-            LogarEvento("INFO", "Fly v2.0: Loop de voo terminado. Velocidade restaurada para " .. DEFAULT_WALKSPEED)
+            LogarEvento("INFO", "Fly v2.1: Loop de voo terminado. Velocidade restaurada para " .. DEFAULT_WALKSPEED)
         end)
     else
         -- Voo DESATIVADO
@@ -81,45 +83,57 @@ end
 
 -- Esta função é chamada pelo SLIDER
 local function SetFlySpeed(Speed)
-    local speedNum = tonumber(Speed) or 75
-    currentFlySpeed = speedNum
-    
-    -- Se o voo estiver ativo, aplica a velocidade imediatamente
-    if _G.FlyLoopActive then
-        local Humanoid = GetHumanoid()
-        if Humanoid then
-            Humanoid.WalkSpeed = currentFlySpeed
+    -- !! CORREÇÃO v2.1 !!
+    -- Adicionado Pcall, já que não está mais protegido pelo pCallback (para evitar spam)
+    local status, err = pcall(function()
+        local speedNum = tonumber(Speed) or 75
+        currentFlySpeed = speedNum
+        
+        -- Se o voo estiver ativo, aplica a velocidade imediatamente
+        if _G.FlyLoopActive then
+            local Humanoid = GetHumanoid()
+            if Humanoid then
+                Humanoid.WalkSpeed = currentFlySpeed
+            end
         end
+    end)
+    
+    if not status then
+        LogarEvento("ERRO", "Falha no SetFlySpeed (Slider): " .. tostring(err))
     end
-    -- Não precisamos de log aqui, senão o console fica spammado
 end
 
 -- 4. CRIA A INTERFACE (NA ABA PLAYER)
 --========================================================================
 if TabPlayer then
-    local SecMovimento = pCreate("SecMovimento_Fly", TabPlayer, "CreateSection", "Movimentação (Módulos)", "Left")
+    -- 1. A SEÇÃO (Apenas um label visual)
+    -- O parent é 'TabPlayer'.
+    pCreate("SecMovimento_Fly", TabPlayer, "CreateSection", "Movimentação (Fly v2.1)", "Left")
     
-    if SecMovimento then
-        -- 1. O TOGGLE
-        FlyToggle = pCreate("ToggleFly", SecMovimento, "CreateToggle", {
-            Name = "Voo (Fly) - [F]",
-            Default = false,
-            Callback = pCallback("Fly_Toggle", SetFlyState)
-        })
-        
-        -- 2. O SLIDER (NOVO)
-        pCreate("SliderFlySpeed", SecMovimento, "CreateSlider", {
-            Name = "Velocidade de Voo",
-            Min = 16,
-            Max = 500,
-            Default = currentFlySpeed,
-            Round = 0,
-            Callback = pCallback("Fly_Speed", SetFlySpeed) -- Sem pCallback para não spammar o log
-        })
-    end
-    LogarEvento("SUCESSO", "Módulo 'Fly v2.0': Interface (Toggle+Slider) criada na Aba Player.")
+    -- 2. O TOGGLE
+    -- O parent TAMBÉM é 'TabPlayer'.
+    FlyToggle = pCreate("ToggleFly", TabPlayer, "CreateToggle", {
+        Name = "Voo (Fly) - [F]",
+        Default = false,
+        Callback = pCallback("Fly_Toggle", SetFlyState) -- pCallback é bom aqui (one-shot)
+    })
+    
+    -- 3. O SLIDER
+    -- O parent TAMBÉM é 'TabPlayer'.
+    pCreate("SliderFlySpeed", TabPlayer, "CreateSlider", {
+        Name = "Velocidade de Voo",
+        Min = 16,
+        Max = 500,
+        Default = currentFlySpeed,
+        Round = 0,
+        -- !! CORREÇÃO v2.1 !!
+        -- Removemos o 'pCallback' daqui para não spammar o console.
+        Callback = SetFlySpeed 
+    })
+    
+    LogarEvento("SUCESSO", "Módulo 'Fly v2.1': Interface (Toggle+Slider) criada na Aba Player.")
 else
-    LogarEvento("ERRO", "Módulo 'Fly v2.0': Não foi possível encontrar a 'TabPlayer'.")
+    LogarEvento("ERRO", "Módulo 'Fly v2.1': Não foi possível encontrar a 'TabPlayer'.")
 end
 
 -- 5. CRIA O ATALHO (TECLA F)
@@ -138,12 +152,12 @@ local keybindConnection = RunService.RenderStepped:Connect(function()
     end)
     
     if not status then
-        LogarEvento("ERRO", "Falha CRÍTICA no listener de atalho 'Fly v2.0': " .. tostring(err))
+        LogarEvento("ERRO", "Falha CRÍTICA no listener de atalho 'Fly v2.1': " .. tostring(err))
         if keybindConnection then
             keybindConnection:Disconnect()
-            LogarEvento("AVISO", "Listener de atalho 'Fly v2.0' foi desconectado devido a erro.")
+            LogarEvento("AVISO", "Listener de atalho 'Fly v2.1' foi desconectado devido a erro.")
         end
     end
 end)
 
-LogarEvento("SUCESSO", "Módulo 'Fly v2.0' (com Slider) carregado e pronto. Pressione 'F' ou use o toggle.")
+LogarEvento("SUCESSO", "Módulo 'Fly v2.1' (com Slider) carregado e pronto. Pressione 'F' ou use o toggle.")
