@@ -1,11 +1,10 @@
 --[==[
-    MÓDULO: World Editor Pro v1.0
+    MÓDULO: World Editor Pro v1.1 (Compatibility Fix)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
+    - [FIX] Substituído Color3.white por Color3.fromRGB(255,255,255) para corrigir erro 'got nil'.
     - Gizmos 3D (Move, Rotate, Resize) com Snapping.
-    - UI Pura: Propriedades e Explorer (Seleção).
-    - Ferramentas: Delete, Clone, Anchor, Collide.
-    - Atalhos: Ctrl+Click (Multi), Del (Delete), Ctrl+D (Duplicate).
+    - UI Pura: Propriedades e Explorer.
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -59,7 +58,6 @@ local function UpdateGizmos()
     ClearGizmos()
     if not EditorSettings.Enabled then return end
     
-    -- Cria um Gizmo para cada objeto selecionado (ou um central para o grupo - simplificado por objeto v1)
     for _, part in pairs(SelectedObjects) do
         if part:IsA("BasePart") then
             -- Selection Box (Outline)
@@ -68,7 +66,7 @@ local function UpdateGizmos()
             box.LineThickness = 0.05
             box.Color3 = Color3.fromRGB(0, 255, 255)
             box.Transparency = 0.5
-            box.Parent = ScreenGui -- Parenting to GUI prevents clutter in workspace
+            box.Parent = ScreenGui 
             table.insert(Gizmos, box)
 
             -- Ferramenta Ativa
@@ -93,7 +91,6 @@ local function UpdateGizmos()
                     elseif face == Enum.NormalId.Front then part.CFrame = cf + (cf.LookVector * delta)
                     elseif face == Enum.NormalId.Back then part.CFrame = cf - (cf.LookVector * delta)
                     end
-                    -- Atualiza UI de Propriedades
                 end)
                 table.insert(Gizmos, handles)
                 
@@ -141,14 +138,13 @@ local function SelectObject(obj, multi)
     end
     
     UpdateGizmos()
-    -- Atualiza UI de Propriedades (pega o primeiro)
     if #SelectedObjects > 0 then UpdatePropertiesUI(SelectedObjects[1]) end
 end
 
 -- 6. UI PURA (PROPERTIES & EXPLORER)
 --========================================================================
 ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "GabotriWorldEditor"
+ScreenGui.Name = "GabotriWorldEditor_v1.1"
 ScreenGui.Parent = CoreGui
 ScreenGui.Enabled = false
 ScreenGui.ResetOnSpawn = false
@@ -163,7 +159,9 @@ PropFrame.Active = true; PropFrame.Draggable = true
 Instance.new("UICorner", PropFrame).CornerRadius = UDim.new(0, 6)
 
 local PropTitle = Instance.new("TextLabel", PropFrame)
-PropTitle.Text = " PROPRIEDADES"; PropTitle.Size = UDim2.new(1,0,0,25); PropTitle.BackgroundColor3 = Color3.fromRGB(40,40,45); PropTitle.TextColor3 = Color3.white; PropTitle.Font = Enum.Font.GothamBold; PropTitle.TextXAlignment = Enum.TextXAlignment.Left
+PropTitle.Text = " PROPRIEDADES"; PropTitle.Size = UDim2.new(1,0,0,25); PropTitle.BackgroundColor3 = Color3.fromRGB(40,40,45)
+PropTitle.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
+PropTitle.Font = Enum.Font.GothamBold; PropTitle.TextXAlignment = Enum.TextXAlignment.Left
 Instance.new("UICorner", PropTitle).CornerRadius = UDim.new(0, 6)
 
 local PropList = Instance.new("ScrollingFrame", PropFrame)
@@ -174,7 +172,9 @@ local UIList = Instance.new("UIListLayout", PropList); UIList.Padding = UDim.new
 local function CreatePropInput(name, order)
     local Frame = Instance.new("Frame", PropList); Frame.Size = UDim2.new(1,-10,0,40); Frame.BackgroundTransparency = 1; Frame.LayoutOrder = order
     local Lbl = Instance.new("TextLabel", Frame); Lbl.Text = name; Lbl.Size = UDim2.new(1,0,0,15); Lbl.TextColor3 = Color3.fromRGB(200,200,200); Lbl.BackgroundTransparency = 1; Lbl.Font = Enum.Font.Gotham; Lbl.TextSize = 10
-    local Box = Instance.new("TextBox", Frame); Box.Position = UDim2.new(0,0,0,15); Box.Size = UDim2.new(1,0,0,20); Box.BackgroundColor3 = Color3.fromRGB(50,50,55); Box.TextColor3 = Color3.white; Box.Font = Enum.Font.Code; Box.TextSize = 11
+    local Box = Instance.new("TextBox", Frame); Box.Position = UDim2.new(0,0,0,15); Box.Size = UDim2.new(1,0,0,20); Box.BackgroundColor3 = Color3.fromRGB(50,50,55)
+    Box.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
+    Box.Font = Enum.Font.Code; Box.TextSize = 11
     Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 4)
     return Box
 end
@@ -188,8 +188,11 @@ local InpTransp = CreatePropInput("Transparency (0-1)", 5)
 
 -- Botões Booleanos
 local BoolContainer = Instance.new("Frame", PropList); BoolContainer.Size = UDim2.new(1,-10,0,30); BoolContainer.BackgroundTransparency = 1; BoolContainer.LayoutOrder = 6
-local BtnAnchor = Instance.new("TextButton", BoolContainer); BtnAnchor.Size = UDim2.new(0.48,0,1,0); BtnAnchor.Text = "Anchored"; BtnAnchor.BackgroundColor3 = Color3.fromRGB(60,60,60); BtnAnchor.TextColor3 = Color3.white
-local BtnCollide = Instance.new("TextButton", BoolContainer); BtnCollide.Size = UDim2.new(0.48,0,1,0); BtnCollide.Position = UDim2.new(0.52,0,0,0); BtnCollide.Text = "Collide"; BtnCollide.BackgroundColor3 = Color3.fromRGB(60,60,60); BtnCollide.TextColor3 = Color3.white
+local BtnAnchor = Instance.new("TextButton", BoolContainer); BtnAnchor.Size = UDim2.new(0.48,0,1,0); BtnAnchor.Text = "Anchored"; BtnAnchor.BackgroundColor3 = Color3.fromRGB(60,60,60)
+BtnAnchor.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
+
+local BtnCollide = Instance.new("TextButton", BoolContainer); BtnCollide.Size = UDim2.new(0.48,0,1,0); BtnCollide.Position = UDim2.new(0.52,0,0,0); BtnCollide.Text = "Collide"; BtnCollide.BackgroundColor3 = Color3.fromRGB(60,60,60)
+BtnCollide.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
 Instance.new("UICorner", BtnAnchor).CornerRadius = UDim.new(0,4); Instance.new("UICorner", BtnCollide).CornerRadius = UDim.new(0,4)
 
 -- Função Global Update UI
@@ -257,7 +260,7 @@ local function CreateToolBtn(text, mode)
     btn.Size = UDim2.new(0, 60, 0, 30)
     btn.Text = text
     btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-    btn.TextColor3 = Color3.white
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
     btn.Font = Enum.Font.GothamBold
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
     btn.MouseButton1Click:Connect(function()
@@ -329,7 +332,7 @@ end)
 -- 8. INTEGRAÇÃO CHASSI
 --========================================================================
 if TabMundo then
-    pCreate("SecEditor", TabMundo, "CreateSection", "World Editor Pro v1.0", "Left")
+    pCreate("SecEditor", TabMundo, "CreateSection", "World Editor Pro v1.1", "Left")
     pCreate("ToggleEdit", TabMundo, "CreateToggle", {
         Name = "Ativar Editor [Insert]",
         CurrentValue = false,
@@ -349,4 +352,4 @@ if TabMundo then
     })
 end
 
-LogarEvento("SUCESSO", "Módulo World Editor v1.0 carregado.")
+LogarEvento("SUCESSO", "Módulo World Editor v1.1 (Colors Fix) carregado.")
