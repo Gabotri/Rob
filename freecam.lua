@@ -1,10 +1,9 @@
 --[==[
-    MÓDULO: Freecam (6DOF) v1.0
+    MÓDULO: Freecam (6DOF) v1.1
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
+    - [FIX CRÍTICO] Corrigido erro 'LocalTransparencyModifier' (aplicado no Humanoid).
     - Câmera Scriptable com 6 Graus de Liberdade.
-    - Controles WASD/QE, Mouse Look.
-    - Transição Suave (Tween) e Controle de Velocidade.
     - Atalho F4.
 ]==]
 
@@ -28,34 +27,41 @@ local Workspace = game:GetService("Workspace")
 
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
+local OriginalCameraType = Camera.CameraType
+local OriginalCameraSubject = Camera.CameraSubject
 
 -- 3. CONFIGURAÇÕES & ESTADO
 local FreecamSettings = {
     Active = false,
-    BaseSpeed = 50,         -- Velocidade padrão (Studs/s)
-    TurboMultiplier = 5,    -- Multiplicador SHIFT
-    SlowMultiplier = 0.2,   -- Multiplicador CTRL
-    Sensitivity = 0.15,     -- Sensibilidade do mouse
-    TweenDuration = 0.5     -- Duração da transição
+    BaseSpeed = 50,         
+    TurboMultiplier = 5,    
+    SlowMultiplier = 0.2,   
+    Sensitivity = 0.15,     
+    TweenDuration = 0.5     
 }
 
 local FreecamConnection = nil
-local OriginalCameraType = Camera.CameraType
-local OriginalCameraSubject = Camera.CameraSubject
 
 -- 4. FUNÇÕES DE CÂMERA E TRANSIÇÃO
 --========================================================================
 
--- Desativa o Noclip do jogador se a câmera estiver ativa
+-- [FIX] Aplica o estado de Noclip/Fantasma (AGORA NO HUMANOID)
 local function ApplyNoclipState(state)
     local char = LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
+        local hum = char:FindFirstChild("Humanoid") -- << REFERENCIA AO HUMANOID
+        
+        if hrp and hum then
             hrp.CanCollide = not state
-            -- Opcional: Invisibilidade (Ghost Mode)
-            char.LocalTransparencyModifier = state and 1 or 0
+            
+            -- Aplica a transparência no Humanoid (Ghost Mode)
+            hum.LocalTransparencyModifier = state and 1 or 0 
+            
+            -- Oculta nome/vida para completar o Ghost Mode
+            hum.DisplayDistanceType = state and Enum.DisplayDistanceType.None or Enum.DisplayDistanceType.Model
+            hum.NameDisplayDistance = state and 0 or 100 -- 100 é o default do Roblox
+            LogarEvento("INFO", "Ghost Mode aplicado: " .. tostring(state))
         end
     end
 end
@@ -70,7 +76,6 @@ local function ToggleFreecam(state)
         OriginalCameraType = Camera.CameraType
         OriginalCameraSubject = Camera.CameraSubject
         
-        -- Transição Suave (Entrada)
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             local targetCFrame = hrp.CFrame
@@ -80,10 +85,9 @@ local function ToggleFreecam(state)
         end
         
         Camera.CameraType = Enum.CameraType.Scriptable
-        UserInputService.MouseIconEnabled = false -- Esconde o cursor
+        UserInputService.MouseIconEnabled = false 
         ApplyNoclipState(true)
         
-        -- Ativa o Loop de Atualização
         if FreecamConnection then FreecamConnection:Disconnect() end
         FreecamConnection = RunService.RenderStepped:Connect(UpdateCamera)
         
@@ -95,9 +99,8 @@ local function ToggleFreecam(state)
         
         -- Transição Suave (Saída)
         local tweenInfo = TweenInfo.new(FreecamSettings.TweenDuration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        TweenService:Create(Camera, tweenInfo, {CameraType = OriginalCameraType, CameraSubject = OriginalCameraSubject}):Play()
-        -- Se o OriginalType for Scriptable, o CameraSubject precisa ser restaurado após o Tween.
-        -- Para simplificar, restauramos o Subject e o Type direto.
+        TweenService:Create(Camera, tweenInfo, {CFrame = Camera.CFrame}):Play() -- Dummy tween para usar a duração
+        
         Camera.CameraSubject = OriginalCameraSubject
         Camera.CameraType = OriginalCameraType 
     end
@@ -109,19 +112,19 @@ end
 local function UpdateCamera(deltaTime)
     if not FreecamSettings.Active then return end
 
-    -- 1. CÁLCULO DE VELOCIDADE (Scaling)
+    -- 1. CÁLCULO DE VELOCIDADE
     local currentSpeed = FreecamSettings.BaseSpeed
 
     if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-        currentSpeed = currentSpeed * FreecamSettings.TurboMultiplier -- Turbo
+        currentSpeed = currentSpeed * FreecamSettings.TurboMultiplier
     elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        currentSpeed = currentSpeed * FreecamSettings.SlowMultiplier  -- Lento
+        currentSpeed = currentSpeed * FreecamSettings.SlowMultiplier
     end
     
     local moveVector = Vector3.new(0, 0, 0)
     local cameraCFrame = Camera.CFrame
 
-    -- 2. MOVIMENTO LINEAR (WASD + QE)
+    -- 2. MOVIMENTO LINEAR
     local forward = cameraCFrame.LookVector * currentSpeed * deltaTime
     local right = cameraCFrame.RightVector * currentSpeed * deltaTime
 
@@ -132,8 +135,8 @@ local function UpdateCamera(deltaTime)
 
     -- QE para Subir/Descer (World Up Vector)
     local worldUp = Vector3.new(0, 1, 0) * currentSpeed * deltaTime
-    if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveVector = moveVector + worldUp end -- Subir
-    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveVector = moveVector - worldUp end -- Descer
+    if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveVector = moveVector + worldUp end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveVector = moveVector - worldUp end
 
     -- 3. MOVIMENTO ANGULAR (MOUSE LOOK)
     local mouseDelta = UserInputService:GetMouseDelta()
@@ -141,32 +144,27 @@ local function UpdateCamera(deltaTime)
     local pitch = -mouseDelta.Y * FreecamSettings.Sensitivity
     local yaw = -mouseDelta.X * FreecamSettings.Sensitivity
     
-    -- Aplica a rotação (yaw em World Up, pitch em Right Vector)
     local rotCFrame = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
     
     -- 4. APLICAÇÃO FINAL
-    -- Rotação primeiro, depois translação
     Camera.CFrame = (cameraCFrame * rotCFrame) + moveVector
 end
 
 -- 6. HOTKEY (F4) E INTEGRAÇÃO
 --========================================================================
 local function SyncFreecamToggle()
-    -- Garante que o estado ativo não seja perdido em respawn
     if not FreecamSettings.Active and Players.LocalPlayer.Character then
-        OriginalCameraSubject = Players.LocalPlayer.Character.Humanoid
+        OriginalCameraSubject = Players.LocalPlayer.Character:FindFirstChild("Humanoid")
     end
 end
 Players.LocalPlayer.CharacterAdded:Connect(SyncFreecamToggle)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.F4 then
-        -- Se o usuário está digitando (chat), ignora
         if gameProcessed then return end
         
         ToggleFreecam(not FreecamSettings.Active)
         
-        -- Sincroniza com o Toggle do Chassi (se existir)
         if Chassi.Abas.Player and Chassi.Abas.Player:FindFirstChild("ToggleFreecam") then
             Chassi.Abas.Player:FindFirstChild("ToggleFreecam"):Set(FreecamSettings.Active)
         end
@@ -177,7 +175,7 @@ end)
 -- 7. UI NO CHASSI (Aba Player)
 --========================================================================
 if TabPlayer then
-    pCreate("SecFreecam", TabPlayer, "CreateSection", "Freecam (Câmera Livre) v1.0", "Left")
+    pCreate("SecFreecam", TabPlayer, "CreateSection", "Freecam (Câmera Livre) v1.1", "Left")
     
     pCreate("ToggleFreecam", TabPlayer, "CreateToggle", {
         Name = "Ativar Freecam [F4]",
@@ -200,10 +198,10 @@ if TabPlayer then
     })
     
     pCreate("InfoControls", TabPlayer, "CreateLabel", {
-        Text = "Controles: WASD (Mover), Q/E (Cima/Baixo), SHIFT (Turbo), Mouse (Visão)"
+        Text = "Controles: WASD (Mover), Q/E (Cima/Baixo), SHIFT (Turbo)"
     })
 
-    LogarEvento("SUCESSO", "Módulo Freecam v1.0 carregado. Pressione F4.")
+    LogarEvento("SUCESSO", "Módulo Freecam v1.1 carregado. Pressione F4.")
 else
     LogarEvento("ERRO", "TabPlayer não encontrada para Freecam.")
 end
