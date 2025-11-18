@@ -1,10 +1,11 @@
 --[[ 
-    MÓDULO: Path Creator Pro v3.0 (UI Remaster)
+    MÓDULO: Path Creator Pro v3.1 (Notifications & Shortcuts)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - [UI] Interface completamente refeita: Topo, Lateral, Inspector e Rodapé.
-    - [FIX] Cores e tamanhos ajustados para não quebrar o layout.
-    - [CORE] Mantida compatibilidade com Color3.new e lógica anterior.
+    - [NOVO] Atalho 'B' para Play/Stop.
+    - [NOVO] Botão de Visibilidade da Rota (Footer).
+    - [NOVO] Sistema de Notificações para todas as ações.
+    - [UI] Layout ajustado para acomodar novos botões.
 ]]
 
 -- 1. PUXA O CHASSI
@@ -14,7 +15,7 @@ if not Chassi then
     return
 end
 
--- 2. SERVIÇOS
+-- 2. SERVIÇOS E UTILITÁRIOS
 local LogarEvento = Chassi.LogarEvento or print
 local pCreate = Chassi.pCreate
 local TabMundo = Chassi.Abas and Chassi.Abas.Mundo
@@ -26,9 +27,21 @@ local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
 
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
+
+-- Função de Notificação Unificada
+local function Notificar(titulo, msg)
+    -- Tenta usar o Rayfield do Chassi se acessível
+    if Chassi.Rayfield and Chassi.Rayfield.Notify then
+        Chassi.Rayfield:Notify({Title = titulo, Content = msg, Duration = 2, Image = 4483362458})
+    else
+        -- Fallback nativo do Roblox
+        StarterGui:SetCore("SendNotification", {Title = titulo, Text = msg, Duration = 2})
+    end
+end
 
 -- Arquivo
 local FileName = "Gabotri_Path_v3_" .. tostring(game.PlaceId) .. ".json"
@@ -38,7 +51,7 @@ local PathState = {
     Enabled = false,
     IsPlaying = false,
     Loop = false,
-    ShowVisuals = true,
+    ShowVisuals = true, -- Controle de visibilidade
     GlobalSpeed = 16,
     GlobalDelay = 0
 }
@@ -52,12 +65,12 @@ local GizmoHandles = {}
 local OriginalCFrames = {} 
 local CurrentTween = nil
 
--- UI References (Novas)
+-- UI References
 local ScreenGui
 local UI = {
     ScrollList = nil,
     StatusLabel = nil,
-    Inputs = {}, -- GlobalSpeed, GlobalDelay, PtSpeed, PtDelay, PtType
+    Inputs = {}, 
     Buttons = {}
 }
 
@@ -69,7 +82,9 @@ local function ClearVisuals()
 end
 
 local function UpdateVisuals()
+    -- Se visual desligado, limpa e retorna
     if not PathState.ShowVisuals then ClearVisuals(); return end
+    
     if not VisualsFolder or not VisualsFolder.Parent then ClearVisuals() end
     
     for i, pt in ipairs(CurrentRoute) do
@@ -148,7 +163,7 @@ end
 
 local function UpdateGizmo()
     ClearGizmos()
-    if not PathState.Enabled or not LastSelectedIndex then return end
+    if not PathState.Enabled or not LastSelectedIndex or not PathState.ShowVisuals then return end
     
     local proxyPart = VisualsFolder:FindFirstChild("Node_"..LastSelectedIndex)
     if not proxyPart then return end 
@@ -218,6 +233,7 @@ local function SaveRoute()
         table.insert(data.Points, { x=x, y=y, z=z, t=pt.type, s=pt.speed, d=pt.delay })
     end
     pcall(function() writefile(FileName, HttpService:JSONEncode(data)) end)
+    Notificar("Sistema", "Rota salva com sucesso!")
     LogarEvento("SUCESSO", "Rota salva em "..FileName)
 end
 
@@ -234,105 +250,68 @@ local function LoadRoute()
                     table.insert(CurrentRoute, { cframe = CFrame.new(d.x, d.y, d.z), type = d.t or "Smooth", speed = d.s or 0, delay = d.d or 0 })
                 end
             end
+            Notificar("Sistema", "Rota carregada.")
         end
     end
     UpdateVisuals(); RefreshTimeline(); UpdatePropertiesUI()
 end
 
--- 8. UI REMASTERIZADA (AQUI ESTÁ A MUDANÇA)
+-- 8. UI (Layout Ajustado)
 --========================================================================
 ScreenGui = Instance.new("ScreenGui", CoreGui); ScreenGui.Name = "PathCreatorUI_v3"; ScreenGui.Enabled = false
 ScreenGui.IgnoreGuiInset = true
 
--- Estilos Básicos
-local Colors = {
-    BgDark = Color3.fromRGB(30, 30, 35),
-    BgLight = Color3.fromRGB(40, 40, 45),
-    Accent = Color3.fromRGB(0, 120, 215),
-    Text = Color3.new(1,1,1),
-    Red = Color3.fromRGB(200, 60, 60),
-    Green = Color3.fromRGB(60, 200, 100)
-}
+-- Estilos
+local Colors = { BgDark = Color3.fromRGB(30, 30, 35), BgLight = Color3.fromRGB(40, 40, 45), Accent = Color3.fromRGB(0, 120, 215), Text = Color3.new(1,1,1), Red = Color3.fromRGB(200, 60, 60), Green = Color3.fromRGB(60, 200, 100) }
 
 local function CreateFrame(parent, size, pos, color, corner)
-    local f = Instance.new("Frame", parent)
-    f.Size = size; f.Position = pos; f.BackgroundColor3 = color or Colors.BgDark
+    local f = Instance.new("Frame", parent); f.Size = size; f.Position = pos; f.BackgroundColor3 = color or Colors.BgDark
     if corner then Instance.new("UICorner", f).CornerRadius = UDim.new(0, corner) end
     return f
 end
 
 local function CreateBtn(parent, text, size, pos, color, func)
-    local b = Instance.new("TextButton", parent)
-    b.Text = text; b.Size = size; b.Position = pos; b.BackgroundColor3 = color or Colors.BgLight
+    local b = Instance.new("TextButton", parent); b.Text = text; b.Size = size; b.Position = pos; b.BackgroundColor3 = color or Colors.BgLight
     b.TextColor3 = Colors.Text; b.Font = Enum.Font.GothamBold; b.TextSize = 12
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
-    b.MouseButton1Click:Connect(func)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4); b.MouseButton1Click:Connect(func)
     return b
 end
 
 local function CreateLabeledInput(parent, labelText, ph, order)
-    local c = Instance.new("Frame", parent)
-    c.Size = UDim2.new(1, 0, 0, 40)
-    c.LayoutOrder = order
-    c.BackgroundTransparency = 1
-    
-    local lbl = Instance.new("TextLabel", c)
-    lbl.Text = labelText; lbl.Size = UDim2.new(1, 0, 0, 15); lbl.BackgroundTransparency = 1
-    lbl.TextColor3 = Color3.fromRGB(180,180,180); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local box = Instance.new("TextBox", c)
-    box.PlaceholderText = ph; box.Text = ""
-    box.Size = UDim2.new(1, 0, 0, 20); box.Position = UDim2.new(0, 0, 0, 18)
-    box.BackgroundColor3 = Colors.BgDark; box.TextColor3 = Colors.Text
-    box.Font = Enum.Font.GothamBold; box.TextSize = 12
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-    
+    local c = Instance.new("Frame", parent); c.Size = UDim2.new(1, 0, 0, 40); c.LayoutOrder = order; c.BackgroundTransparency = 1
+    local lbl = Instance.new("TextLabel", c); lbl.Text = labelText; lbl.Size = UDim2.new(1, 0, 0, 15); lbl.BackgroundTransparency = 1; lbl.TextColor3 = Color3.fromRGB(180,180,180); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local box = Instance.new("TextBox", c); box.PlaceholderText = ph; box.Text = ""; box.Size = UDim2.new(1, 0, 0, 20); box.Position = UDim2.new(0, 0, 0, 18); box.BackgroundColor3 = Colors.BgDark; box.TextColor3 = Colors.Text; box.Font = Enum.Font.GothamBold; box.TextSize = 12; Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
     return box
 end
 
--- Estrutura Principal
 local MainContainer = CreateFrame(ScreenGui, UDim2.new(0, 550, 0, 400), UDim2.new(0.5, -275, 0.5, -200), Colors.BgDark, 8)
 MainContainer.Active = true; MainContainer.Draggable = true
 
--- 1. Top Bar (Header)
+-- Top Bar
 local Header = CreateFrame(MainContainer, UDim2.new(1, 0, 0, 30), UDim2.new(0,0,0,0), Colors.BgLight, 8)
-local HeaderCover = CreateFrame(Header, UDim2.new(1,0,0,5), UDim2.new(0,0,1,-5), Colors.BgLight, 0); HeaderCover.BorderSizePixel = 0 -- Tapa o arredondado de baixo
-local Title = Instance.new("TextLabel", Header); Title.Text = "  PATH CREATOR PRO v3.0"; Title.Size = UDim2.new(1, -30, 1, 0)
-Title.BackgroundTransparency = 1; Title.TextColor3 = Colors.Text; Title.Font = Enum.Font.GothamBold; Title.TextXAlignment = Enum.TextXAlignment.Left
-local CloseBtn = CreateBtn(Header, "X", UDim2.new(0, 30, 1, 0), UDim2.new(1, -30, 0, 0), Color3.new(0,0,0), function() PathState.Enabled = false; ScreenGui.Enabled = false; UpdateGizmo() end)
-CloseBtn.BackgroundTransparency = 1; CloseBtn.TextColor3 = Colors.Red
+local HeaderCover = CreateFrame(Header, UDim2.new(1,0,0,5), UDim2.new(0,0,1,-5), Colors.BgLight, 0); HeaderCover.BorderSizePixel = 0
+local Title = Instance.new("TextLabel", Header); Title.Text = "  PATH CREATOR PRO v3.1"; Title.Size = UDim2.new(1, -30, 1, 0); Title.BackgroundTransparency = 1; Title.TextColor3 = Colors.Text; Title.Font = Enum.Font.GothamBold; Title.TextXAlignment = Enum.TextXAlignment.Left
+local CloseBtn = CreateBtn(Header, "X", UDim2.new(0, 30, 1, 0), UDim2.new(1, -30, 0, 0), Color3.new(0,0,0), function() PathState.Enabled = false; ScreenGui.Enabled = false; UpdateGizmo() end); CloseBtn.BackgroundTransparency = 1; CloseBtn.TextColor3 = Colors.Red
 
--- 2. Sidebar (Lista de Pontos)
+-- Sidebar
 local Sidebar = CreateFrame(MainContainer, UDim2.new(0.35, -5, 1, -75), UDim2.new(0, 5, 0, 35), Colors.BgLight, 4)
-UI.ScrollList = Instance.new("ScrollingFrame", Sidebar)
-UI.ScrollList.Size = UDim2.new(1, -4, 1, -4); UI.ScrollList.Position = UDim2.new(0, 2, 0, 2)
-UI.ScrollList.BackgroundTransparency = 1; UI.ScrollList.ScrollBarThickness = 4; UI.ScrollList.CanvasSize = UDim2.new(0,0,0,0)
+UI.ScrollList = Instance.new("ScrollingFrame", Sidebar); UI.ScrollList.Size = UDim2.new(1, -4, 1, -4); UI.ScrollList.Position = UDim2.new(0, 2, 0, 2); UI.ScrollList.BackgroundTransparency = 1; UI.ScrollList.ScrollBarThickness = 4; UI.ScrollList.CanvasSize = UDim2.new(0,0,0,0)
 local ListLayout = Instance.new("UIListLayout", UI.ScrollList); ListLayout.Padding = UDim.new(0, 2)
 
--- 3. Inspector (Direita)
+-- Inspector
 local Inspector = CreateFrame(MainContainer, UDim2.new(0.65, -10, 1, -75), UDim2.new(0.35, 5, 0, 35), Colors.BgLight, 4)
 local InspLayout = Instance.new("UIListLayout", Inspector); InspLayout.Padding = UDim.new(0, 5); InspLayout.SortOrder = Enum.SortOrder.LayoutOrder
 local InspPad = Instance.new("UIPadding", Inspector); InspPad.PaddingTop = UDim.new(0, 10); InspPad.PaddingLeft = UDim.new(0, 10); InspPad.PaddingRight = UDim.new(0, 10)
+UI.StatusLabel = Instance.new("TextLabel", Inspector); UI.StatusLabel.LayoutOrder = 0; UI.StatusLabel.Size = UDim2.new(1,0,0,20); UI.StatusLabel.BackgroundTransparency = 1; UI.StatusLabel.TextColor3 = Colors.Accent; UI.StatusLabel.Font = Enum.Font.GothamBlack; UI.StatusLabel.Text = "SELECIONE UM PONTO"
 
-UI.StatusLabel = Instance.new("TextLabel", Inspector); UI.StatusLabel.LayoutOrder = 0
-UI.StatusLabel.Size = UDim2.new(1,0,0,20); UI.StatusLabel.BackgroundTransparency = 1; UI.StatusLabel.TextColor3 = Colors.Accent
-UI.StatusLabel.Font = Enum.Font.GothamBlack; UI.StatusLabel.Text = "SELECIONE UM PONTO"
+UI.Inputs.PtType = CreateLabeledInput(Inspector, "Tipo (Smooth/Instant)", "Ex: Smooth", 1); UI.Inputs.PtType.FocusLost:Connect(function() for k,_ in pairs(SelectedIndices) do if CurrentRoute[k] then CurrentRoute[k].type=UI.Inputs.PtType.Text; Notificar("Editar", "Tipo alterado.") end end UpdateVisuals() end)
+UI.Inputs.PtSpeed = CreateLabeledInput(Inspector, "Velocidade Custom (0 = Global)", "0", 2); UI.Inputs.PtSpeed.FocusLost:Connect(function() local v=tonumber(UI.Inputs.PtSpeed.Text); if v then for k,_ in pairs(SelectedIndices) do CurrentRoute[k].speed=v end Notificar("Editar", "Velocidade alterada.") UpdateVisuals() end end)
+UI.Inputs.PtDelay = CreateLabeledInput(Inspector, "Delay Custom (0 = Global)", "0", 3); UI.Inputs.PtDelay.FocusLost:Connect(function() local v=tonumber(UI.Inputs.PtDelay.Text); if v then for k,_ in pairs(SelectedIndices) do CurrentRoute[k].delay=v end Notificar("Editar", "Delay alterado.") UpdateVisuals() end end)
 
-UI.Inputs.PtType = CreateLabeledInput(Inspector, "Tipo (Smooth/Instant)", "Ex: Smooth", 1)
-UI.Inputs.PtType.FocusLost:Connect(function() for k,_ in pairs(SelectedIndices) do if CurrentRoute[k] then CurrentRoute[k].type=UI.Inputs.PtType.Text end end UpdateVisuals() end)
-
-UI.Inputs.PtSpeed = CreateLabeledInput(Inspector, "Velocidade Custom (0 = Global)", "0", 2)
-UI.Inputs.PtSpeed.FocusLost:Connect(function() local v=tonumber(UI.Inputs.PtSpeed.Text); if v then for k,_ in pairs(SelectedIndices) do CurrentRoute[k].speed=v end UpdateVisuals() end end)
-
-UI.Inputs.PtDelay = CreateLabeledInput(Inspector, "Delay Custom (0 = Global)", "0", 3)
-UI.Inputs.PtDelay.FocusLost:Connect(function() local v=tonumber(UI.Inputs.PtDelay.Text); if v then for k,_ in pairs(SelectedIndices) do CurrentRoute[k].delay=v end UpdateVisuals() end end)
-
--- Botões de Ação do Inspector
 local ActionsFrame = CreateFrame(Inspector, UDim2.new(1,0,0,30), UDim2.new(0,0,0,0), nil, 0); ActionsFrame.BackgroundTransparency = 1; ActionsFrame.LayoutOrder = 4
 CreateBtn(ActionsFrame, "Mover p/ Mim", UDim2.new(0.48, 0, 1, 0), UDim2.new(0,0,0,0), Colors.Accent, function()
     local h = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-    if h and LastSelectedIndex then CurrentRoute[LastSelectedIndex].cframe = h.CFrame; UpdateVisuals(); UpdateGizmo() end
+    if h and LastSelectedIndex then CurrentRoute[LastSelectedIndex].cframe = h.CFrame; UpdateVisuals(); UpdateGizmo(); Notificar("Editar", "Ponto movido.") end
 end)
 CreateBtn(ActionsFrame, "Deletar", UDim2.new(0.48, 0, 1, 0), UDim2.new(0.52,0,0,0), Colors.Red, function()
     local toDel = {}
@@ -341,45 +320,52 @@ CreateBtn(ActionsFrame, "Deletar", UDim2.new(0.48, 0, 1, 0), UDim2.new(0.52,0,0,
     for _, idx in ipairs(toDel) do table.remove(CurrentRoute, idx) end
     SelectedIndices = {}; LastSelectedIndex = nil
     RefreshTimeline(); UpdateVisuals(); UpdateGizmo(); UpdatePropertiesUI()
+    Notificar("Sistema", "Ponto(s) deletado(s).")
 end)
 
--- 4. Bottom Bar (Footer - Globais e Playback)
+-- Footer
 local Footer = CreateFrame(MainContainer, UDim2.new(1, -10, 0, 30), UDim2.new(0, 5, 1, -35), Colors.BgLight, 4)
-
--- Inputs Globais (Esquerda do Footer)
-local GlobalBox = CreateFrame(Footer, UDim2.new(0.4, 0, 1, 0), UDim2.new(0,0,0,0), nil, 0); GlobalBox.BackgroundTransparency = 1
+local GlobalBox = CreateFrame(Footer, UDim2.new(0.55, 0, 1, 0), UDim2.new(0,0,0,0), nil, 0); GlobalBox.BackgroundTransparency = 1
 local l1 = Instance.new("UIListLayout", GlobalBox); l1.FillDirection = Enum.FillDirection.Horizontal; l1.Padding = UDim.new(0, 5); l1.VerticalAlignment = Enum.VerticalAlignment.Center
 
-UI.Inputs.GlobalSpeed = Instance.new("TextBox", GlobalBox); UI.Inputs.GlobalSpeed.PlaceholderText = "G. Speed"; UI.Inputs.GlobalSpeed.Size = UDim2.new(0, 60, 0, 20); UI.Inputs.GlobalSpeed.BackgroundColor3 = Colors.BgDark; UI.Inputs.GlobalSpeed.TextColor3 = Colors.Text; Instance.new("UICorner", UI.Inputs.GlobalSpeed).CornerRadius = UDim.new(0,4)
-UI.Inputs.GlobalSpeed.FocusLost:Connect(function() PathState.GlobalSpeed = tonumber(UI.Inputs.GlobalSpeed.Text) or 16; UpdateVisuals() end)
+UI.Inputs.GlobalSpeed = Instance.new("TextBox", GlobalBox); UI.Inputs.GlobalSpeed.PlaceholderText = "G. Spd"; UI.Inputs.GlobalSpeed.Size = UDim2.new(0, 45, 0, 20); UI.Inputs.GlobalSpeed.BackgroundColor3 = Colors.BgDark; UI.Inputs.GlobalSpeed.TextColor3 = Colors.Text; Instance.new("UICorner", UI.Inputs.GlobalSpeed).CornerRadius = UDim.new(0,4)
+UI.Inputs.GlobalSpeed.FocusLost:Connect(function() PathState.GlobalSpeed = tonumber(UI.Inputs.GlobalSpeed.Text) or 16; UpdateVisuals(); Notificar("Config", "Velocidade Global atualizada") end)
 
-UI.Inputs.GlobalDelay = Instance.new("TextBox", GlobalBox); UI.Inputs.GlobalDelay.PlaceholderText = "G. Delay"; UI.Inputs.GlobalDelay.Size = UDim2.new(0, 60, 0, 20); UI.Inputs.GlobalDelay.BackgroundColor3 = Colors.BgDark; UI.Inputs.GlobalDelay.TextColor3 = Colors.Text; Instance.new("UICorner", UI.Inputs.GlobalDelay).CornerRadius = UDim.new(0,4)
-UI.Inputs.GlobalDelay.FocusLost:Connect(function() PathState.GlobalDelay = tonumber(UI.Inputs.GlobalDelay.Text) or 0; UpdateVisuals() end)
+UI.Inputs.GlobalDelay = Instance.new("TextBox", GlobalBox); UI.Inputs.GlobalDelay.PlaceholderText = "G. Dly"; UI.Inputs.GlobalDelay.Size = UDim2.new(0, 45, 0, 20); UI.Inputs.GlobalDelay.BackgroundColor3 = Colors.BgDark; UI.Inputs.GlobalDelay.TextColor3 = Colors.Text; Instance.new("UICorner", UI.Inputs.GlobalDelay).CornerRadius = UDim.new(0,4)
+UI.Inputs.GlobalDelay.FocusLost:Connect(function() PathState.GlobalDelay = tonumber(UI.Inputs.GlobalDelay.Text) or 0; UpdateVisuals(); Notificar("Config", "Delay Global atualizado") end)
 
-UI.Buttons.Loop = CreateBtn(GlobalBox, "Loop: OFF", UDim2.new(0, 70, 0, 20), UDim2.new(0,0,0,0), Colors.BgDark, function()
+UI.Buttons.Loop = CreateBtn(GlobalBox, "Loop: OFF", UDim2.new(0, 60, 0, 20), UDim2.new(0,0,0,0), Colors.BgDark, function()
     PathState.Loop = not PathState.Loop
     UI.Buttons.Loop.Text = PathState.Loop and "Loop: ON" or "Loop: OFF"
     UI.Buttons.Loop.BackgroundColor3 = PathState.Loop and Colors.Accent or Colors.BgDark
+    Notificar("Loop", PathState.Loop and "Ativado" or "Desativado")
 end)
 
--- Botões de Playback (Direita do Footer)
-local PlayBox = CreateFrame(Footer, UDim2.new(0.5, 0, 1, 0), UDim2.new(0.5, 0, 0, 0), nil, 0); PlayBox.BackgroundTransparency = 1
+-- NOVO: Botão de Visibilidade (Olho)
+UI.Buttons.Vis = CreateBtn(GlobalBox, "Vis: ON", UDim2.new(0, 55, 0, 20), UDim2.new(0,0,0,0), Colors.Accent, function()
+    PathState.ShowVisuals = not PathState.ShowVisuals
+    UI.Buttons.Vis.Text = PathState.ShowVisuals and "Vis: ON" or "Vis: OFF"
+    UI.Buttons.Vis.BackgroundColor3 = PathState.ShowVisuals and Colors.Accent or Colors.BgDark
+    UpdateVisuals()
+    UpdateGizmo()
+    Notificar("Visual", PathState.ShowVisuals and "Rota Visível" or "Rota Oculta")
+end)
+
+local PlayBox = CreateFrame(Footer, UDim2.new(0.4, 0, 1, 0), UDim2.new(0.6, 0, 0, 0), nil, 0); PlayBox.BackgroundTransparency = 1
 local l2 = Instance.new("UIListLayout", PlayBox); l2.FillDirection = Enum.FillDirection.Horizontal; l2.Padding = UDim.new(0, 5); l2.HorizontalAlignment = Enum.HorizontalAlignment.Right; l2.VerticalAlignment = Enum.VerticalAlignment.Center
 CreateBtn(PlayBox, "SALVAR", UDim2.new(0, 60, 0, 24), UDim2.new(0,0,0,0), Color3.fromRGB(255, 140, 0), SaveRoute)
 CreateBtn(PlayBox, "STOP", UDim2.new(0, 50, 0, 24), UDim2.new(0,0,0,0), Colors.Red, function() TogglePlayback(false) end)
 CreateBtn(PlayBox, "PLAY", UDim2.new(0, 50, 0, 24), UDim2.new(0,0,0,0), Colors.Green, function() TogglePlayback(true) end)
 
 
--- Lógica de Atualização da UI
+-- Lógica de UI
 function RefreshTimeline()
     for _, c in pairs(UI.ScrollList:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
     for i, pt in ipairs(CurrentRoute) do
         local Row = Instance.new("Frame", UI.ScrollList); Row.Size = UDim2.new(1, 0, 0, 25); Row.BackgroundColor3 = SelectedIndices[i] and Colors.Accent or Colors.BgDark
         Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 4)
-        
         local Btn = Instance.new("TextButton", Row); Btn.Size = UDim2.new(1, -10, 1, 0); Btn.Position = UDim2.new(0, 10, 0, 0)
         Btn.BackgroundTransparency = 1; Btn.Text = i .. ". " .. pt.type; Btn.TextColor3 = Colors.Text; Btn.TextXAlignment = Enum.TextXAlignment.Left; Btn.Font = Enum.Font.GothamSemibold
-        
         Btn.MouseButton1Click:Connect(function()
             local multi = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
             SelectPoint(i, multi)
@@ -391,7 +377,6 @@ end
 function UpdatePropertiesUI()
     UI.Inputs.GlobalSpeed.Text = tostring(PathState.GlobalSpeed)
     UI.Inputs.GlobalDelay.Text = tostring(PathState.GlobalDelay)
-    
     local count = 0; for _ in pairs(SelectedIndices) do count=count+1 end
     if count == 0 then
         UI.StatusLabel.Text = "NENHUM SELECIONADO"
@@ -409,9 +394,11 @@ function UpdatePropertiesUI()
     RefreshTimeline()
 end
 
--- 9. LÓGICA DE PLAYBACK (Igual)
+-- 9. LÓGICA DE PLAYBACK
 function TogglePlayback(state)
     PathState.IsPlaying = state
+    Notificar("Playback", state and "Iniciando rota..." or "Rota Parada.")
+    
     if not state then if CurrentTween then CurrentTween:Cancel() end return end
     
     task.spawn(function()
@@ -451,18 +438,23 @@ function TogglePlayback(state)
                     if timerUI then timerUI.Enabled = false end
                 end
             end
-            if not PathState.Loop then PathState.IsPlaying = false end
+            if not PathState.Loop then PathState.IsPlaying = false; Notificar("Playback", "Rota finalizada.") end
         end
     end)
 end
 
--- 10. INPUTS
+-- 10. INPUTS E ATALHOS
 UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == Enum.KeyCode.F5 then
         PathState.Enabled = not PathState.Enabled
         ScreenGui.Enabled = PathState.Enabled
         UpdateVisuals(); UpdateGizmo()
         if TabMundo and TabMundo:FindFirstChild("TogglePathCreator") then TabMundo:FindFirstChild("TogglePathCreator"):Set(PathState.Enabled) end
+    end
+    
+    -- [NOVO] Atalho B para Play/Stop
+    if input.KeyCode == Enum.KeyCode.B and not gp then
+        TogglePlayback(not PathState.IsPlaying)
     end
     
     if not PathState.Enabled then return end
@@ -474,6 +466,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
                 type = "Smooth", speed = 0, delay = 0
             })
             SelectPoint(#CurrentRoute, false)
+            Notificar("Editar", "Ponto adicionado (T)")
         end
     end
     
@@ -497,7 +490,7 @@ end)
 
 -- 11. START
 if TabMundo then
-    pCreate("SecPathPro", TabMundo, "CreateSection", "Path Creator v3.0", "Right")
+    pCreate("SecPathPro", TabMundo, "CreateSection", "Path Creator v3.1", "Right")
     pCreate("TogglePathCreator", TabMundo, "CreateToggle", {
         Name = "Abrir Editor [F5]", CurrentValue = false,
         Callback = function(v) PathState.Enabled = v; ScreenGui.Enabled = v; UpdateVisuals(); UpdateGizmo() end
@@ -505,4 +498,4 @@ if TabMundo then
 end
 
 LoadRoute()
-LogarEvento("SUCESSO", "Módulo Path Creator v3.0 (UI Remaster) carregado.")
+LogarEvento("SUCESSO", "Módulo Path Creator v3.1 (UI+Notifs) carregado.")
