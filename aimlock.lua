@@ -1,14 +1,12 @@
 --[==[
-    MÓDULO: AimLock (Camera Tracking) v1.0
+    MÓDULO: AimLock (Prediction Edition) v1.2
     AUTOR: Sr. Gabotri (via Gemini)
-    DESCRIÇÃO: Sistema de rastreamento de mira com suavização e FOV.
-    FUNCIONALIDADES:
-    - AimLock: Trava a câmera no alvo mais próximo da mira.
-    - FOV Circle: Desenha o raio de atuação.
-    - Smoothing: Movimento humanizado (Lerp).
-    - Visibility Check: Raycast para não mirar através de paredes.
-    - Target Part: Configurável (Head, Torso, Random).
-    - Keybind: Botão direito do mouse (MB2) por padrão.
+    DESCRIÇÃO: Sistema de mira com Predição e Controles Híbridos.
+    
+    MUDANÇAS v1.2:
+    - [CONTROLE] F1: Liga/Desliga o Módulo (Master Switch).
+    - [CONTROLE] Botão Direito: Segura para mirar (Gatilho).
+    - [NOVO] Predição de Movimento (Velocity Check) para alvos em movimento.
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -29,27 +27,31 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
 
 -- 3. CONFIGURAÇÕES (Settings)
 local AimSettings = {
-    Enabled = false,
-    Keybind = Enum.UserInputType.MouseButton2, -- Botão Direito
-    IsAiming = false,
+    SystemEnabled = false,        -- Controlado pelo F1 (Master Switch)
+    IsAiming = false,             -- Controlado pelo Botão Direito (Gatilho)
+    
+    -- Teclas
+    ToggleKey = Enum.KeyCode.F1,               -- Liga/Desliga o sistema
+    TriggerKey = Enum.UserInputType.MouseButton2, -- Gatilho da mira
     
     -- Seleção
-    TeamCheck = true,    -- Ignorar aliados
-    WallCheck = true,    -- Verificar paredes
-    TargetPart = "Head", -- "Head", "HumanoidRootPart" ou "Random"
+    TeamCheck = true,    
+    WallCheck = true,    
+    TargetPart = "Head",
     
-    -- FOV (Campo de Visão)
+    -- FOV
     ShowFOV = true,
     FOVRadius = 150,
     FOVColor = Color3.fromRGB(255, 255, 255),
     
-    -- Suavização (Quanto maior, mais lento/suave)
-    Smoothing = 0.1,     -- 1 = Instantâneo, 0.1 = Lento
-    Sensitivity = 1      -- Multiplicador extra
+    -- Movimento e Predição
+    Smoothing = 0.1,
+    Sensitivity = 1,
+    Prediction = false,       -- [NOVO] Vem desligado por padrão
+    PredictionAmount = 0.165  -- [NOVO] Fator de predição (Ping/Velocidade)
 }
 
 local Target = nil
@@ -76,17 +78,24 @@ local function IsVisible(targetPart)
     params.IgnoreWater = true
     
     local result = Workspace:Raycast(origin, direction, params)
-    return result == nil -- Se não bateu em nada, está visível
+    return result == nil
 end
 
--- Pega a parte do corpo desejada
+-- Pega nome da parte (Safe)
+local function GetTargetPartName()
+    local val = AimSettings.TargetPart
+    if type(val) == "table" then return val[1] or "Head" end
+    return tostring(val)
+end
+
 local function GetTargetPart(character)
-    if AimSettings.TargetPart == "Random" then
+    local partName = GetTargetPartName()
+    if partName == "Random" then
         local parts = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}
         local randomPart = parts[math.random(1, #parts)]
         return character:FindFirstChild(randomPart) or character:FindFirstChild("Head")
     else
-        return character:FindFirstChild(AimSettings.TargetPart)
+        return character:FindFirstChild(partName)
     end
 end
 
@@ -97,7 +106,6 @@ local function GetClosestPlayer()
     
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            -- Checagem de Time
             local isAlly = (AimSettings.TeamCheck and player.Team == LocalPlayer.Team and player.Team ~= nil)
             
             if not isAlly and player.Character then
@@ -113,7 +121,6 @@ local function GetClosestPlayer()
                         local dist = (mousePos - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
                         
                         if dist < maxDist then
-                            -- Checagem de Visibilidade
                             if IsVisible(head) then
                                 closest = player
                                 maxDist = dist
@@ -127,52 +134,81 @@ local function GetClosestPlayer()
     return closest
 end
 
--- 5. LÓGICA PRINCIPAL (LOOP)
+-- 5. LÓGICA PRINCIPAL (LOOP & PREDIÇÃO)
 --========================================================================
 RunService.RenderStepped:Connect(function()
-    -- Atualiza Desenho do FOV
-    FOVCircle.Visible = AimSettings.ShowFOV and AimSettings.Enabled
+    -- O FOV só aparece se o sistema estiver ATIVADO (F1)
+    FOVCircle.Visible = AimSettings.ShowFOV and AimSettings.SystemEnabled
     FOVCircle.Radius = AimSettings.FOVRadius
     FOVCircle.Position = UserInputService:GetMouseLocation()
-    FOVCircle.Color = AimSettings.FOVColor
+    
+    -- Muda cor: Vermelho se segurando botão direito, Branco se em espera
+    FOVCircle.Color = (AimSettings.IsAiming and AimSettings.SystemEnabled) and Color3.fromRGB(255, 0, 0) or AimSettings.FOVColor
 
     -- Lógica de Mira
-    if AimSettings.Enabled and AimSettings.IsAiming then
-        -- Se já temos um alvo, verifica se ele ainda é válido
+    if AimSettings.SystemEnabled and AimSettings.IsAiming then
+        -- Validação do Alvo
         if Target and Target.Character and Target.Character:FindFirstChild("Humanoid") and Target.Character.Humanoid.Health > 0 then
-             -- Verifica visibilidade contínua
              local part = GetTargetPart(Target.Character)
-             if part then
-                 -- Matemágica da Câmera (CFrame LookAt com Interpolação/Lerp)
-                 local currentCFrame = Camera.CFrame
-                 local targetCFrame = CFrame.new(currentCFrame.Position, part.Position)
+             local root = Target.Character:FindFirstChild("HumanoidRootPart")
+             
+             if part and root then
+                 -- === LÓGICA DE PREDIÇÃO ===
+                 local targetPosition = part.Position
                  
-                 -- Aplica a suavização (Lerp)
+                 if AimSettings.Prediction then
+                     -- Adiciona: Velocidade do Alvo * Fator de Predição
+                     targetPosition = targetPosition + (root.Velocity * AimSettings.PredictionAmount)
+                 end
+                 -- ==========================
+
+                 -- Matemágica da Câmera (Lerp)
+                 local currentCFrame = Camera.CFrame
+                 local targetCFrame = CFrame.new(currentCFrame.Position, targetPosition)
+                 
                  Camera.CFrame = currentCFrame:Lerp(targetCFrame, AimSettings.Smoothing * AimSettings.Sensitivity)
              else
-                 Target = nil -- Perdeu a parte
+                 Target = nil
              end
         else
-            -- Se não temos alvo ou ele morreu, busca um novo
+            -- Busca novo alvo
             Target = GetClosestPlayer()
         end
     else
-        Target = nil -- Reseta se soltar o botão
+        Target = nil
     end
 end)
 
--- 6. INPUT (Keybind)
+-- 6. INPUTS (F1 e Botão Direito)
 --========================================================================
 UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.UserInputType == AimSettings.Keybind or input.KeyCode == AimSettings.Keybind then
-        AimSettings.IsAiming = true
+    if gp then return end 
+    
+    -- F1: Master Switch (Ativa/Desativa o sistema)
+    if input.KeyCode == AimSettings.ToggleKey then
+        AimSettings.SystemEnabled = not AimSettings.SystemEnabled
+        AimSettings.IsAiming = false -- Reseta mira ao desligar
+        
+        if AimSettings.SystemEnabled then
+            LogarEvento("INFO", "AimLock HABILITADO (Pronto para uso).")
+        else
+            LogarEvento("INFO", "AimLock DESABILITADO.")
+        end
+    end
+
+    -- Botão Direito: Gatilho (Segurar)
+    if input.UserInputType == AimSettings.TriggerKey then
+        if AimSettings.SystemEnabled then
+            AimSettings.IsAiming = true
+        end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input, gp)
     if gp then return end
-    if input.UserInputType == AimSettings.Keybind or input.KeyCode == AimSettings.Keybind then
+    
+    -- Soltou Botão Direito: Para de mirar
+    if input.UserInputType == AimSettings.TriggerKey then
         AimSettings.IsAiming = false
         Target = nil
     end
@@ -181,41 +217,56 @@ end)
 -- 7. INTERFACE GRÁFICA (Tab Player)
 --========================================================================
 if TabPlayer then
-    pCreate("SecAim", TabPlayer, "CreateSection", "AimLock v1.0", "Left")
+    pCreate("SecAim", TabPlayer, "CreateSection", "AimLock v1.2 (Híbrido)", "Left")
     
+    -- Toggle Principal (Sincronizado com F1)
     pCreate("ToggleAim", TabPlayer, "CreateToggle", {
-        Name = "Ativar AimLock",
+        Name = "Sistema AimLock [F1]",
         CurrentValue = false,
-        Callback = function(Val) AimSettings.Enabled = Val end
+        Callback = function(Val) 
+            AimSettings.SystemEnabled = Val 
+            if not Val then AimSettings.IsAiming = false end
+        end
     })
     
     pCreate("ToggleFOV", TabPlayer, "CreateToggle", {
-        Name = "Mostrar FOV (Círculo)",
+        Name = "Mostrar FOV",
         CurrentValue = AimSettings.ShowFOV,
         Callback = function(Val) AimSettings.ShowFOV = Val end
     })
     
     pCreate("SliderFOV", TabPlayer, "CreateSlider", {
         Name = "Raio do FOV",
-        Range = {10, 800},
-        Increment = 10,
-        Suffix = " px",
+        Range = {10, 800}, Increment = 10, Suffix = " px",
         CurrentValue = 150,
         Callback = function(Val) AimSettings.FOVRadius = Val end
     })
     
-    pCreate("SliderSmooth", TabPlayer, "CreateSlider", {
-        Name = "Suavização (Humanização)",
-        Range = {1, 100}, -- Na UI será 1-100, no script divide por 100
+    -- Configuração de Predição
+    pCreate("TogglePred", TabPlayer, "CreateToggle", {
+        Name = "Usar Predição de Movimento",
+        CurrentValue = false, -- Pedido: Padrão Desligado
+        Callback = function(Val) AimSettings.Prediction = Val end
+    })
+    
+    pCreate("SliderPred", TabPlayer, "CreateSlider", {
+        Name = "Fator de Predição (Ping)",
+        Range = {1, 50}, -- Divide por 100 no script (0.01 a 0.5)
         Increment = 1,
-        Suffix = "%",
-        CurrentValue = 10, -- 0.1
+        Suffix = " ms",
+        CurrentValue = 16, -- ~0.16 (Padrão razoável)
+        Callback = function(Val) AimSettings.PredictionAmount = Val / 100 end
+    })
+    
+    pCreate("SliderSmooth", TabPlayer, "CreateSlider", {
+        Name = "Suavização",
+        Range = {1, 100}, Increment = 1, Suffix = "%",
+        CurrentValue = 10,
         Callback = function(Val) AimSettings.Smoothing = Val / 100 end
     })
     
     pCreate("ToggleWall", TabPlayer, "CreateToggle", {
-        Name = "Wall Check (Visibilidade)",
-        CurrentValue = AimSettings.WallCheck,
+        Name = "Wall Check", CurrentValue = AimSettings.WallCheck,
         Callback = function(Val) AimSettings.WallCheck = Val end
     })
     
@@ -226,7 +277,7 @@ if TabPlayer then
         Callback = function(Val) AimSettings.TargetPart = Val end
     })
 
-    LogarEvento("SUCESSO", "Módulo AimLock v1.0 carregado.")
+    LogarEvento("SUCESSO", "Módulo AimLock v1.2 carregado.")
 else
     LogarEvento("ERRO", "TabPlayer não encontrada para o AimLock.")
 end
