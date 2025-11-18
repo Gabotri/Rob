@@ -1,11 +1,11 @@
 --[[ 
-    MÓDULO: Path Creator Pro v3.1 (Notifications & Shortcuts)
+    MÓDULO: Path Creator Pro v3.2 (Beam Fix & List Tools)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - [NOVO] Atalho 'B' para Play/Stop.
-    - [NOVO] Botão de Visibilidade da Rota (Footer).
-    - [NOVO] Sistema de Notificações para todas as ações.
-    - [UI] Layout ajustado para acomodar novos botões.
+    - [FIX] Beams (Linhas) agora renderizam corretamente em 2 passagens (sempre visíveis).
+    - [NOVO] Botões de Reordenar: Mover ponto para Cima/Baixo na lista.
+    - [NOVO] Botão "Add Pós": Insere um ponto novo após o selecionado (Insert).
+    - [MANUTENÇÃO] Atalhos e Notificações mantidos.
 ]]
 
 -- 1. PUXA O CHASSI
@@ -15,7 +15,7 @@ if not Chassi then
     return
 end
 
--- 2. SERVIÇOS E UTILITÁRIOS
+-- 2. SERVIÇOS
 local LogarEvento = Chassi.LogarEvento or print
 local pCreate = Chassi.pCreate
 local TabMundo = Chassi.Abas and Chassi.Abas.Mundo
@@ -32,13 +32,11 @@ local StarterGui = game:GetService("StarterGui")
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
 
--- Função de Notificação Unificada
+-- Notificação Unificada
 local function Notificar(titulo, msg)
-    -- Tenta usar o Rayfield do Chassi se acessível
     if Chassi.Rayfield and Chassi.Rayfield.Notify then
         Chassi.Rayfield:Notify({Title = titulo, Content = msg, Duration = 2, Image = 4483362458})
     else
-        -- Fallback nativo do Roblox
         StarterGui:SetCore("SendNotification", {Title = titulo, Text = msg, Duration = 2})
     end
 end
@@ -51,7 +49,7 @@ local PathState = {
     Enabled = false,
     IsPlaying = false,
     Loop = false,
-    ShowVisuals = true, -- Controle de visibilidade
+    ShowVisuals = true,
     GlobalSpeed = 16,
     GlobalDelay = 0
 }
@@ -74,19 +72,18 @@ local UI = {
     Buttons = {}
 }
 
--- 4. SISTEMA VISUAL 3D
+-- 4. SISTEMA VISUAL 3D (CORRIGIDO - 2 PASSES)
 local function ClearVisuals()
     if VisualsFolder then VisualsFolder:Destroy() end
     VisualsFolder = Instance.new("Folder", Workspace)
-    VisualsFolder.Name = "GabotriPathVisuals_v3"
+    VisualsFolder.Name = "GabotriPathVisuals_v3.2"
 end
 
 local function UpdateVisuals()
-    -- Se visual desligado, limpa e retorna
     if not PathState.ShowVisuals then ClearVisuals(); return end
-    
     if not VisualsFolder or not VisualsFolder.Parent then ClearVisuals() end
     
+    -- PASSAGEM 1: CRIAR/ATUALIZAR TODAS AS PARTES
     for i, pt in ipairs(CurrentRoute) do
         local partName = "Node_" .. i
         local part = VisualsFolder:FindFirstChild(partName)
@@ -127,31 +124,35 @@ local function UpdateVisuals()
         local spdTxt = (pt.speed > 0) and tostring(pt.speed) or ("G("..PathState.GlobalSpeed..")")
         local dlyTxt = (pt.delay > 0) and tostring(pt.delay) or ("G("..PathState.GlobalDelay..")")
         lbl.Text = string.format("#%d [%s]\nSpd: %s | Dly: %s", i, pt.type, spdTxt, dlyTxt)
-        
-        -- Beams
-        if i < #CurrentRoute then
-            local nextPartName = "Node_" .. (i+1)
-            local beam = part:FindFirstChild("PathBeam") or Instance.new("Beam", part)
-            beam.Name = "PathBeam"; beam.FaceCamera = true; beam.Width0 = 0.5; beam.Width1 = 0.5
-            beam.Color = ColorSequence.new(Color3.new(1,1,1))
-            beam.Transparency = NumberSequence.new(0.5)
-            beam.Attachment0 = part.BeamAtt
-            
-            local nextPart = VisualsFolder:FindFirstChild(nextPartName)
-            if nextPart and nextPart:FindFirstChild("BeamAtt") then
-                beam.Attachment1 = nextPart.BeamAtt; beam.Enabled = true
-            else
-                beam.Enabled = false
-            end
-        else
-            local b = part:FindFirstChild("PathBeam"); if b then b:Destroy() end
-        end
     end
     
-    -- Limpeza orfãos
+    -- Limpeza de sobras antes do Pass 2
     for _, child in pairs(VisualsFolder:GetChildren()) do
         local idx = tonumber(child.Name:match("Node_(%d+)"))
         if idx and idx > #CurrentRoute then child:Destroy() end
+    end
+
+    -- PASSAGEM 2: CONECTAR BEAMS (Agora que todas as partes existem)
+    for i = 1, #CurrentRoute do
+        local part = VisualsFolder:FindFirstChild("Node_"..i)
+        if part then
+            if i < #CurrentRoute then
+                local nextPart = VisualsFolder:FindFirstChild("Node_"..(i+1))
+                local beam = part:FindFirstChild("PathBeam") or Instance.new("Beam", part)
+                beam.Name = "PathBeam"; beam.FaceCamera = true; beam.Width0 = 0.5; beam.Width1 = 0.5
+                beam.Color = ColorSequence.new(Color3.new(1,1,1))
+                beam.Transparency = NumberSequence.new(0.5)
+                beam.Attachment0 = part:FindFirstChild("BeamAtt")
+                
+                if nextPart and nextPart:FindFirstChild("BeamAtt") then
+                    beam.Attachment1 = nextPart.BeamAtt; beam.Enabled = true
+                else
+                    beam.Enabled = false
+                end
+            else
+                local b = part:FindFirstChild("PathBeam"); if b then b:Destroy() end
+            end
+        end
     end
 end
 
@@ -225,7 +226,40 @@ local function SelectPoint(index, multi)
     UpdateVisuals(); UpdateGizmo(); UpdatePropertiesUI()
 end
 
--- 7. SAVE/LOAD
+-- 7. LOGICA DE LISTA (NOVAS FUNÇÕES)
+local function MovePoint(direction) -- -1 (Up) or 1 (Down)
+    if not LastSelectedIndex then return end
+    local newIndex = LastSelectedIndex + direction
+    
+    if newIndex < 1 or newIndex > #CurrentRoute then return end
+    
+    -- Swap
+    local temp = CurrentRoute[newIndex]
+    CurrentRoute[newIndex] = CurrentRoute[LastSelectedIndex]
+    CurrentRoute[LastSelectedIndex] = temp
+    
+    -- Update Selection to follow
+    SelectPoint(newIndex, false)
+    Notificar("Lista", "Ponto reordenado.")
+end
+
+local function AddPointAfter()
+    if not LastSelectedIndex or not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
+    local hrpCF = Player.Character.HumanoidRootPart.CFrame
+    
+    local newPt = {
+        cframe = hrpCF,
+        type = "Smooth",
+        speed = 0,
+        delay = 0
+    }
+    
+    table.insert(CurrentRoute, LastSelectedIndex + 1, newPt)
+    SelectPoint(LastSelectedIndex + 1, false)
+    Notificar("Lista", "Ponto inserido no meio.")
+end
+
+-- 8. SAVE/LOAD
 local function SaveRoute()
     local data = { GlobalSpeed = PathState.GlobalSpeed, GlobalDelay = PathState.GlobalDelay, Points = {} }
     for _, pt in ipairs(CurrentRoute) do
@@ -256,13 +290,12 @@ local function LoadRoute()
     UpdateVisuals(); RefreshTimeline(); UpdatePropertiesUI()
 end
 
--- 8. UI (Layout Ajustado)
+-- 9. UI
 --========================================================================
-ScreenGui = Instance.new("ScreenGui", CoreGui); ScreenGui.Name = "PathCreatorUI_v3"; ScreenGui.Enabled = false
+ScreenGui = Instance.new("ScreenGui", CoreGui); ScreenGui.Name = "PathCreatorUI_v3.2"; ScreenGui.Enabled = false
 ScreenGui.IgnoreGuiInset = true
 
--- Estilos
-local Colors = { BgDark = Color3.fromRGB(30, 30, 35), BgLight = Color3.fromRGB(40, 40, 45), Accent = Color3.fromRGB(0, 120, 215), Text = Color3.new(1,1,1), Red = Color3.fromRGB(200, 60, 60), Green = Color3.fromRGB(60, 200, 100) }
+local Colors = { BgDark = Color3.fromRGB(30, 30, 35), BgLight = Color3.fromRGB(40, 40, 45), Accent = Color3.fromRGB(0, 120, 215), Text = Color3.new(1,1,1), Red = Color3.fromRGB(200, 60, 60), Green = Color3.fromRGB(60, 200, 100), Orange = Color3.fromRGB(255, 140, 0) }
 
 local function CreateFrame(parent, size, pos, color, corner)
     local f = Instance.new("Frame", parent); f.Size = size; f.Position = pos; f.BackgroundColor3 = color or Colors.BgDark
@@ -287,16 +320,15 @@ end
 local MainContainer = CreateFrame(ScreenGui, UDim2.new(0, 550, 0, 400), UDim2.new(0.5, -275, 0.5, -200), Colors.BgDark, 8)
 MainContainer.Active = true; MainContainer.Draggable = true
 
--- Top Bar
+-- Header
 local Header = CreateFrame(MainContainer, UDim2.new(1, 0, 0, 30), UDim2.new(0,0,0,0), Colors.BgLight, 8)
 local HeaderCover = CreateFrame(Header, UDim2.new(1,0,0,5), UDim2.new(0,0,1,-5), Colors.BgLight, 0); HeaderCover.BorderSizePixel = 0
-local Title = Instance.new("TextLabel", Header); Title.Text = "  PATH CREATOR PRO v3.1"; Title.Size = UDim2.new(1, -30, 1, 0); Title.BackgroundTransparency = 1; Title.TextColor3 = Colors.Text; Title.Font = Enum.Font.GothamBold; Title.TextXAlignment = Enum.TextXAlignment.Left
+local Title = Instance.new("TextLabel", Header); Title.Text = "  PATH CREATOR PRO v3.2"; Title.Size = UDim2.new(1, -30, 1, 0); Title.BackgroundTransparency = 1; Title.TextColor3 = Colors.Text; Title.Font = Enum.Font.GothamBold; Title.TextXAlignment = Enum.TextXAlignment.Left
 local CloseBtn = CreateBtn(Header, "X", UDim2.new(0, 30, 1, 0), UDim2.new(1, -30, 0, 0), Color3.new(0,0,0), function() PathState.Enabled = false; ScreenGui.Enabled = false; UpdateGizmo() end); CloseBtn.BackgroundTransparency = 1; CloseBtn.TextColor3 = Colors.Red
 
 -- Sidebar
 local Sidebar = CreateFrame(MainContainer, UDim2.new(0.35, -5, 1, -75), UDim2.new(0, 5, 0, 35), Colors.BgLight, 4)
 UI.ScrollList = Instance.new("ScrollingFrame", Sidebar); UI.ScrollList.Size = UDim2.new(1, -4, 1, -4); UI.ScrollList.Position = UDim2.new(0, 2, 0, 2); UI.ScrollList.BackgroundTransparency = 1; UI.ScrollList.ScrollBarThickness = 4; UI.ScrollList.CanvasSize = UDim2.new(0,0,0,0)
-local ListLayout = Instance.new("UIListLayout", UI.ScrollList); ListLayout.Padding = UDim.new(0, 2)
 
 -- Inspector
 local Inspector = CreateFrame(MainContainer, UDim2.new(0.65, -10, 1, -75), UDim2.new(0.35, 5, 0, 35), Colors.BgLight, 4)
@@ -308,12 +340,14 @@ UI.Inputs.PtType = CreateLabeledInput(Inspector, "Tipo (Smooth/Instant)", "Ex: S
 UI.Inputs.PtSpeed = CreateLabeledInput(Inspector, "Velocidade Custom (0 = Global)", "0", 2); UI.Inputs.PtSpeed.FocusLost:Connect(function() local v=tonumber(UI.Inputs.PtSpeed.Text); if v then for k,_ in pairs(SelectedIndices) do CurrentRoute[k].speed=v end Notificar("Editar", "Velocidade alterada.") UpdateVisuals() end end)
 UI.Inputs.PtDelay = CreateLabeledInput(Inspector, "Delay Custom (0 = Global)", "0", 3); UI.Inputs.PtDelay.FocusLost:Connect(function() local v=tonumber(UI.Inputs.PtDelay.Text); if v then for k,_ in pairs(SelectedIndices) do CurrentRoute[k].delay=v end Notificar("Editar", "Delay alterado.") UpdateVisuals() end end)
 
-local ActionsFrame = CreateFrame(Inspector, UDim2.new(1,0,0,30), UDim2.new(0,0,0,0), nil, 0); ActionsFrame.BackgroundTransparency = 1; ActionsFrame.LayoutOrder = 4
-CreateBtn(ActionsFrame, "Mover p/ Mim", UDim2.new(0.48, 0, 1, 0), UDim2.new(0,0,0,0), Colors.Accent, function()
+-- Botões de Ação (Editados)
+local ActionsFrame = CreateFrame(Inspector, UDim2.new(1,0,0,55), UDim2.new(0,0,0,0), nil, 0); ActionsFrame.BackgroundTransparency = 1; ActionsFrame.LayoutOrder = 4
+-- Linha 1: Mover e Deletar
+CreateBtn(ActionsFrame, "Mover p/ Mim", UDim2.new(0.48, 0, 0, 24), UDim2.new(0,0,0,0), Colors.Accent, function()
     local h = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
     if h and LastSelectedIndex then CurrentRoute[LastSelectedIndex].cframe = h.CFrame; UpdateVisuals(); UpdateGizmo(); Notificar("Editar", "Ponto movido.") end
 end)
-CreateBtn(ActionsFrame, "Deletar", UDim2.new(0.48, 0, 1, 0), UDim2.new(0.52,0,0,0), Colors.Red, function()
+CreateBtn(ActionsFrame, "Deletar", UDim2.new(0.48, 0, 0, 24), UDim2.new(0.52,0,0,0), Colors.Red, function()
     local toDel = {}
     for k,_ in pairs(SelectedIndices) do table.insert(toDel, k) end
     table.sort(toDel, function(a,b) return a > b end)
@@ -322,6 +356,10 @@ CreateBtn(ActionsFrame, "Deletar", UDim2.new(0.48, 0, 1, 0), UDim2.new(0.52,0,0,
     RefreshTimeline(); UpdateVisuals(); UpdateGizmo(); UpdatePropertiesUI()
     Notificar("Sistema", "Ponto(s) deletado(s).")
 end)
+-- Linha 2: Ferramentas de Lista (Novas)
+CreateBtn(ActionsFrame, "▲", UDim2.new(0.2, 0, 0, 24), UDim2.new(0,0,0,28), Colors.BgDark, function() MovePoint(-1) end)
+CreateBtn(ActionsFrame, "▼", UDim2.new(0.2, 0, 0, 24), UDim2.new(0.22,0,0,28), Colors.BgDark, function() MovePoint(1) end)
+CreateBtn(ActionsFrame, "+ Pós (Insert)", UDim2.new(0.53, 0, 0, 24), UDim2.new(0.47,0,0,28), Colors.Orange, AddPointAfter)
 
 -- Footer
 local Footer = CreateFrame(MainContainer, UDim2.new(1, -10, 0, 30), UDim2.new(0, 5, 1, -35), Colors.BgLight, 4)
@@ -340,23 +378,19 @@ UI.Buttons.Loop = CreateBtn(GlobalBox, "Loop: OFF", UDim2.new(0, 60, 0, 20), UDi
     UI.Buttons.Loop.BackgroundColor3 = PathState.Loop and Colors.Accent or Colors.BgDark
     Notificar("Loop", PathState.Loop and "Ativado" or "Desativado")
 end)
-
--- NOVO: Botão de Visibilidade (Olho)
 UI.Buttons.Vis = CreateBtn(GlobalBox, "Vis: ON", UDim2.new(0, 55, 0, 20), UDim2.new(0,0,0,0), Colors.Accent, function()
     PathState.ShowVisuals = not PathState.ShowVisuals
     UI.Buttons.Vis.Text = PathState.ShowVisuals and "Vis: ON" or "Vis: OFF"
     UI.Buttons.Vis.BackgroundColor3 = PathState.ShowVisuals and Colors.Accent or Colors.BgDark
-    UpdateVisuals()
-    UpdateGizmo()
+    UpdateVisuals(); UpdateGizmo()
     Notificar("Visual", PathState.ShowVisuals and "Rota Visível" or "Rota Oculta")
 end)
 
 local PlayBox = CreateFrame(Footer, UDim2.new(0.4, 0, 1, 0), UDim2.new(0.6, 0, 0, 0), nil, 0); PlayBox.BackgroundTransparency = 1
 local l2 = Instance.new("UIListLayout", PlayBox); l2.FillDirection = Enum.FillDirection.Horizontal; l2.Padding = UDim.new(0, 5); l2.HorizontalAlignment = Enum.HorizontalAlignment.Right; l2.VerticalAlignment = Enum.VerticalAlignment.Center
-CreateBtn(PlayBox, "SALVAR", UDim2.new(0, 60, 0, 24), UDim2.new(0,0,0,0), Color3.fromRGB(255, 140, 0), SaveRoute)
+CreateBtn(PlayBox, "SALVAR", UDim2.new(0, 60, 0, 24), UDim2.new(0,0,0,0), Colors.Orange, SaveRoute)
 CreateBtn(PlayBox, "STOP", UDim2.new(0, 50, 0, 24), UDim2.new(0,0,0,0), Colors.Red, function() TogglePlayback(false) end)
 CreateBtn(PlayBox, "PLAY", UDim2.new(0, 50, 0, 24), UDim2.new(0,0,0,0), Colors.Green, function() TogglePlayback(true) end)
-
 
 -- Lógica de UI
 function RefreshTimeline()
@@ -394,11 +428,10 @@ function UpdatePropertiesUI()
     RefreshTimeline()
 end
 
--- 9. LÓGICA DE PLAYBACK
+-- 10. LÓGICA DE PLAYBACK
 function TogglePlayback(state)
     PathState.IsPlaying = state
     Notificar("Playback", state and "Iniciando rota..." or "Rota Parada.")
-    
     if not state then if CurrentTween then CurrentTween:Cancel() end return end
     
     task.spawn(function()
@@ -427,7 +460,6 @@ function TogglePlayback(state)
                     local timerUI = part and part:FindFirstChild("TimerUI")
                     local timerLbl = timerUI and timerUI.TimerLbl
                     if timerUI then timerUI.Enabled = true end
-                    
                     local start = tick()
                     while tick() - start < delay do
                         if not PathState.IsPlaying then break end
@@ -443,7 +475,7 @@ function TogglePlayback(state)
     end)
 end
 
--- 10. INPUTS E ATALHOS
+-- 11. INPUTS
 UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == Enum.KeyCode.F5 then
         PathState.Enabled = not PathState.Enabled
@@ -451,14 +483,8 @@ UserInputService.InputBegan:Connect(function(input, gp)
         UpdateVisuals(); UpdateGizmo()
         if TabMundo and TabMundo:FindFirstChild("TogglePathCreator") then TabMundo:FindFirstChild("TogglePathCreator"):Set(PathState.Enabled) end
     end
-    
-    -- [NOVO] Atalho B para Play/Stop
-    if input.KeyCode == Enum.KeyCode.B and not gp then
-        TogglePlayback(not PathState.IsPlaying)
-    end
-    
+    if input.KeyCode == Enum.KeyCode.B and not gp then TogglePlayback(not PathState.IsPlaying) end
     if not PathState.Enabled then return end
-    
     if input.KeyCode == Enum.KeyCode.T and not gp then
         if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
             table.insert(CurrentRoute, {
@@ -469,12 +495,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
             Notificar("Editar", "Ponto adicionado (T)")
         end
     end
-    
     if input.UserInputType == Enum.UserInputType.MouseButton1 and not gp then
         local mouseRay = Mouse.UnitRay
         local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Include
         if VisualsFolder then params.FilterDescendantsInstances = {VisualsFolder} end
-        
         local res = Workspace:Raycast(mouseRay.Origin, mouseRay.Direction * 1000, params)
         if res and res.Instance then
             local idx = tonumber(res.Instance.Name:match("Node_(%d+)"))
@@ -488,9 +512,9 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- 11. START
+-- 12. START
 if TabMundo then
-    pCreate("SecPathPro", TabMundo, "CreateSection", "Path Creator v3.1", "Right")
+    pCreate("SecPathPro", TabMundo, "CreateSection", "Path Creator v3.2", "Right")
     pCreate("TogglePathCreator", TabMundo, "CreateToggle", {
         Name = "Abrir Editor [F5]", CurrentValue = false,
         Callback = function(v) PathState.Enabled = v; ScreenGui.Enabled = v; UpdateVisuals(); UpdateGizmo() end
@@ -498,4 +522,4 @@ if TabMundo then
 end
 
 LoadRoute()
-LogarEvento("SUCESSO", "Módulo Path Creator v3.1 (UI+Notifs) carregado.")
+LogarEvento("SUCESSO", "Módulo Path Creator v3.2 (Beams Fix + Tools) carregado.")
