@@ -40,9 +40,9 @@ local SafetyPart = nil
 -- Configurações
 local Settings = {
     Mode = "Safe",
-    SafeSpeed = 300,
+    SafeSpeed = 100,
     ShowGizmos = true,
-    AutoNoclip = true -- [NOVO] Controle do Noclip
+    AutoNoclip = false -- [NOVO] Controle do Noclip
 }
 
 -- UI Refs
