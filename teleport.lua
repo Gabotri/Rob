@@ -1,10 +1,10 @@
 --[==[
-    MÓDULO: Teleport Manager v1.6 (UI V2 & Logic Fix)
+    MÓDULO: Teleport Manager v1.7 (Final Fix)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - Interface reorganizada com Auto-Layout (Zero sobreposição).
-    - Correção de sincronia do Modo (Inicia Safe).
-    - Velocidade baseada em Studs/s (Igual WalkSpeed).
+    - UI Remasterizada (Auto-Layout) da v1.6.
+    - [FIX CRÍTICO] Removido Color3.white/black (Causa do erro).
+    - Tudo agora usa Color3.fromRGB(r, g, b).
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -34,10 +34,10 @@ local CurrentTween = nil
 local NoclipConnection = nil
 local GizmoFolder = nil
 
--- Configurações Padrão (Safe por segurança)
+-- Configurações
 local Settings = {
-    Mode = "Safe",      -- Padrão SAFE para evitar kicks
-    SafeSpeed = 300,    -- 300 studs/s (Rápido, mas suave)
+    Mode = "Safe",
+    SafeSpeed = 300,
     ShowGizmos = true
 }
 
@@ -51,7 +51,7 @@ local function AtualizarGizmos()
     if not Settings.ShowGizmos then return end
     
     GizmoFolder = Instance.new("Folder", Workspace)
-    GizmoFolder.Name = "GabotriGizmos_v1.6"
+    GizmoFolder.Name = "GabotriGizmos_v1.7"
     
     for _, pt in ipairs(SavedPoints) do
         if pt.x and pt.y and pt.z then
@@ -71,10 +71,10 @@ local function UpdateConfigUI()
     
     if Settings.Mode == "Safe" then
         BtnModeDisplay.Text = "MODO: SEGURO (Tween)"
-        BtnModeDisplay.BackgroundColor3 = Color3.fromRGB(0, 180, 100) -- Verde
+        BtnModeDisplay.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
     else
         BtnModeDisplay.Text = "MODO: INSTANTÂNEO"
-        BtnModeDisplay.BackgroundColor3 = Color3.fromRGB(200, 60, 60) -- Vermelho
+        BtnModeDisplay.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
     end
     
     if Settings.ShowGizmos then
@@ -105,7 +105,7 @@ local function CarregarArquivo()
             end
         end
     end
-    UpdateConfigUI() -- FORÇA ATUALIZAÇÃO VISUAL AO CARREGAR
+    UpdateConfigUI()
     AtualizarGizmos()
 end
 
@@ -136,10 +136,9 @@ local function TeleportTo(targetPos)
     if Settings.Mode == "Instant" then
         Root.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
     elseif Settings.Mode == "Safe" then
-        -- Cálculo: Tempo = Distancia / Velocidade (Studs per Second)
         local dist = (targetPos - Root.Position).Magnitude
         local speed = tonumber(Settings.SafeSpeed) or 300
-        if speed <= 0 then speed = 16 end -- Proteção contra div/0
+        if speed <= 0 then speed = 16 end
         
         local time = dist / speed
         
@@ -154,10 +153,10 @@ local function TeleportTo(targetPos)
     end
 end
 
--- 5. UI MANAGER V2 (AUTO LAYOUT)
+-- 5. UI MANAGER V2 (AUTO LAYOUT + COLOR FIX)
 --========================================================================
 ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-ScreenGui.Name = "TPManager_v1.6"
+ScreenGui.Name = "TPManager_v1.7"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
 
@@ -171,19 +170,19 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 local MC = Instance.new("UICorner", MainFrame); MC.CornerRadius = UDim.new(0, 6)
 
--- --- HEADER ---
+-- HEADER
 local Header = Instance.new("Frame", MainFrame)
 Header.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 Header.Size = UDim2.new(1, 0, 0, 30)
 local HC = Instance.new("UICorner", Header); HC.CornerRadius = UDim.new(0, 6)
-local HF = Instance.new("Frame", Header); HF.BorderSizePixel=0; HF.BackgroundColor3=Header.BackgroundColor3; HF.Size=UDim2.new(1,0,0,5); HF.Position=UDim2.new(0,0,1,-5) -- Filler
+local HF = Instance.new("Frame", Header); HF.BorderSizePixel=0; HF.BackgroundColor3=Header.BackgroundColor3; HF.Size=UDim2.new(1,0,0,5); HF.Position=UDim2.new(0,0,1,-5)
 
 local Title = Instance.new("TextLabel", Header)
-Title.Text = "  TP Manager v1.6 [F2]"; Title.TextColor3 = Color3.fromRGB(240,240,240); Title.Font = Enum.Font.GothamBold; Title.TextSize = 14; Title.Size = UDim2.new(1,-30,1,0); Title.BackgroundTransparency = 1; Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Text = "  TP Manager v1.7 [F2]"; Title.TextColor3 = Color3.fromRGB(240,240,240); Title.Font = Enum.Font.GothamBold; Title.TextSize = 14; Title.Size = UDim2.new(1,-30,1,0); Title.BackgroundTransparency = 1; Title.TextXAlignment = Enum.TextXAlignment.Left
 local Close = Instance.new("TextButton", Header); Close.Text="X"; Close.TextColor3=Color3.fromRGB(255,80,80); Close.BackgroundTransparency=1; Close.Size=UDim2.new(0,30,1,0); Close.Position=UDim2.new(1,-30,0,0); Close.Font=Enum.Font.GothamBold
 Close.MouseButton1Click:Connect(function() ScreenGui.Enabled = false end)
 
--- --- ÁREA DE CONTEÚDO (PADDING & LIST) ---
+-- CONTEÚDO
 local Content = Instance.new("Frame", MainFrame)
 Content.BackgroundTransparency = 1
 Content.Position = UDim2.new(0, 0, 0, 35)
@@ -199,7 +198,7 @@ UIPad.PaddingTop = UDim.new(0, 5)
 UIPad.PaddingLeft = UDim.new(0, 10)
 UIPad.PaddingRight = UDim.new(0, 10)
 
--- SECTION 1: CONFIGS (Row 1 & 2)
+-- 1. CONFIGS
 local RowMode = Instance.new("Frame", Content)
 RowMode.BackgroundTransparency = 1
 RowMode.Size = UDim2.new(1, 0, 0, 25)
@@ -209,7 +208,7 @@ BtnModeDisplay = Instance.new("TextButton", RowMode)
 BtnModeDisplay.Size = UDim2.new(0.65, 0, 1, 0)
 BtnModeDisplay.Font = Enum.Font.GothamBold
 BtnModeDisplay.TextSize = 11
-BtnModeDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnModeDisplay.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
 local C1 = Instance.new("UICorner", BtnModeDisplay); C1.CornerRadius = UDim.new(0, 4)
 
 InpSpeed = Instance.new("TextBox", RowMode)
@@ -217,7 +216,7 @@ InpSpeed.Size = UDim2.new(0.30, 0, 1, 0)
 InpSpeed.Position = UDim2.new(0.70, 0, 0, 0)
 InpSpeed.PlaceholderText = "Speed"
 InpSpeed.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-InpSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
+InpSpeed.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
 InpSpeed.Font = Enum.Font.Gotham
 InpSpeed.TextSize = 12
 local C2 = Instance.new("UICorner", InpSpeed); C2.CornerRadius = UDim.new(0, 4)
@@ -227,31 +226,30 @@ BtnToggleGizmo.LayoutOrder = 2
 BtnToggleGizmo.Size = UDim2.new(1, 0, 0, 20)
 BtnToggleGizmo.Font = Enum.Font.GothamBold
 BtnToggleGizmo.TextSize = 11
-BtnToggleGizmo.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnToggleGizmo.TextColor3 = Color3.fromRGB(255, 255, 255) -- FIX
 local C3 = Instance.new("UICorner", BtnToggleGizmo); C3.CornerRadius = UDim.new(0, 4)
 
--- SECTION 2: CRIAÇÃO
+-- 2. CRIAÇÃO
 local Divider = Instance.new("Frame", Content); Divider.LayoutOrder=3; Divider.Size=UDim2.new(1,0,0,1); Divider.BackgroundColor3=Color3.fromRGB(60,60,60); Divider.BorderSizePixel=0
 
 local RowCoords = Instance.new("Frame", Content); RowCoords.LayoutOrder=4; RowCoords.BackgroundTransparency=1; RowCoords.Size=UDim2.new(1,0,0,25)
-local InpX = Instance.new("TextBox", RowCoords); InpX.Size=UDim2.new(0.22,0,1,0); InpX.PlaceholderText="X"; InpX.BackgroundColor3=Color3.fromRGB(45,45,50); InpX.TextColor3=Color3.white; Instance.new("UICorner", InpX).CornerRadius=UDim.new(0,4)
-local InpY = Instance.new("TextBox", RowCoords); InpY.Size=UDim2.new(0.22,0,1,0); InpY.Position=UDim2.new(0.26,0,0,0); InpY.PlaceholderText="Y"; InpY.BackgroundColor3=Color3.fromRGB(45,45,50); InpY.TextColor3=Color3.white; Instance.new("UICorner", InpY).CornerRadius=UDim.new(0,4)
-local InpZ = Instance.new("TextBox", RowCoords); InpZ.Size=UDim2.new(0.22,0,1,0); InpZ.Position=UDim2.new(0.52,0,0,0); InpZ.PlaceholderText="Z"; InpZ.BackgroundColor3=Color3.fromRGB(45,45,50); InpZ.TextColor3=Color3.white; Instance.new("UICorner", InpZ).CornerRadius=UDim.new(0,4)
-local BtnGPS = Instance.new("TextButton", RowCoords); BtnGPS.Size=UDim2.new(0.20,0,1,0); BtnGPS.Position=UDim2.new(0.80,0,0,0); BtnGPS.Text="GPS"; BtnGPS.BackgroundColor3=Color3.fromRGB(255,150,0); BtnGPS.TextColor3=Color3.black; BtnGPS.Font=Enum.Font.GothamBold; Instance.new("UICorner", BtnGPS).CornerRadius=UDim.new(0,4)
+local InpX = Instance.new("TextBox", RowCoords); InpX.Size=UDim2.new(0.22,0,1,0); InpX.PlaceholderText="X"; InpX.BackgroundColor3=Color3.fromRGB(45,45,50); InpX.TextColor3=Color3.fromRGB(255,255,255); Instance.new("UICorner", InpX).CornerRadius=UDim.new(0,4)
+local InpY = Instance.new("TextBox", RowCoords); InpY.Size=UDim2.new(0.22,0,1,0); InpY.Position=UDim2.new(0.26,0,0,0); InpY.PlaceholderText="Y"; InpY.BackgroundColor3=Color3.fromRGB(45,45,50); InpY.TextColor3=Color3.fromRGB(255,255,255); Instance.new("UICorner", InpY).CornerRadius=UDim.new(0,4)
+local InpZ = Instance.new("TextBox", RowCoords); InpZ.Size=UDim2.new(0.22,0,1,0); InpZ.Position=UDim2.new(0.52,0,0,0); InpZ.PlaceholderText="Z"; InpZ.BackgroundColor3=Color3.fromRGB(45,45,50); InpZ.TextColor3=Color3.fromRGB(255,255,255); Instance.new("UICorner", InpZ).CornerRadius=UDim.new(0,4)
+local BtnGPS = Instance.new("TextButton", RowCoords); BtnGPS.Size=UDim2.new(0.20,0,1,0); BtnGPS.Position=UDim2.new(0.80,0,0,0); BtnGPS.Text="GPS"; BtnGPS.BackgroundColor3=Color3.fromRGB(255,150,0); BtnGPS.TextColor3=Color3.fromRGB(0,0,0); BtnGPS.Font=Enum.Font.GothamBold; Instance.new("UICorner", BtnGPS).CornerRadius=UDim.new(0,4)
 
 local RowSave = Instance.new("Frame", Content); RowSave.LayoutOrder=5; RowSave.BackgroundTransparency=1; RowSave.Size=UDim2.new(1,0,0,25)
-local InpName = Instance.new("TextBox", RowSave); InpName.Size=UDim2.new(0.65,0,1,0); InpName.PlaceholderText="Nome do Ponto"; InpName.BackgroundColor3=Color3.fromRGB(45,45,50); InpName.TextColor3=Color3.white; InpName.TextXAlignment=Enum.TextXAlignment.Left; Instance.new("UICorner", InpName).CornerRadius=UDim.new(0,4)
--- Adicionando padding no texto do input
+local InpName = Instance.new("TextBox", RowSave); InpName.Size=UDim2.new(0.65,0,1,0); InpName.PlaceholderText="Nome do Ponto"; InpName.BackgroundColor3=Color3.fromRGB(45,45,50); InpName.TextColor3=Color3.fromRGB(255,255,255); InpName.TextXAlignment=Enum.TextXAlignment.Left; Instance.new("UICorner", InpName).CornerRadius=UDim.new(0,4)
 local IPad = Instance.new("UIPadding", InpName); IPad.PaddingLeft=UDim.new(0,5)
-local BtnSave = Instance.new("TextButton", RowSave); BtnSave.Size=UDim2.new(0.30,0,1,0); BtnSave.Position=UDim2.new(0.70,0,0,0); BtnSave.Text="SALVAR"; BtnSave.BackgroundColor3=Color3.fromRGB(0,120,200); BtnSave.TextColor3=Color3.white; BtnSave.Font=Enum.Font.GothamBold; Instance.new("UICorner", BtnSave).CornerRadius=UDim.new(0,4)
+local BtnSave = Instance.new("TextButton", RowSave); BtnSave.Size=UDim2.new(0.30,0,1,0); BtnSave.Position=UDim2.new(0.70,0,0,0); BtnSave.Text="SALVAR"; BtnSave.BackgroundColor3=Color3.fromRGB(0,120,200); BtnSave.TextColor3=Color3.fromRGB(255,255,255); BtnSave.Font=Enum.Font.GothamBold; Instance.new("UICorner", BtnSave).CornerRadius=UDim.new(0,4)
 
--- SECTION 3: LISTA
+-- 3. LISTA
 local Divider2 = Instance.new("Frame", Content); Divider2.LayoutOrder=6; Divider2.Size=UDim2.new(1,0,0,1); Divider2.BackgroundColor3=Color3.fromRGB(60,60,60); Divider2.BorderSizePixel=0
 
 PointListScroll = Instance.new("ScrollingFrame", Content)
 PointListScroll.LayoutOrder = 7
 PointListScroll.BackgroundTransparency = 1
-PointListScroll.Size = UDim2.new(1, 0, 1, -160) -- Restante do espaço
+PointListScroll.Size = UDim2.new(1, 0, 1, -160)
 PointListScroll.CanvasSize = UDim2.new(0,0,0,0)
 PointListScroll.ScrollBarThickness = 4
 
@@ -259,7 +257,7 @@ local ListLayout = Instance.new("UIListLayout", PointListScroll)
 ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ListLayout.Padding = UDim.new(0, 4)
 
--- LOGICA
+-- LÓGICA BOTÕES
 BtnModeDisplay.MouseButton1Click:Connect(function()
     Settings.Mode = (Settings.Mode == "Instant") and "Safe" or "Instant"
     UpdateConfigUI(); SalvarArquivo()
@@ -286,11 +284,11 @@ local function RefreshList()
         Row.BackgroundColor3 = (i%2==0) and Color3.fromRGB(40,40,45) or Color3.fromRGB(35,35,40)
         local CR = Instance.new("UICorner", Row); CR.CornerRadius = UDim.new(0, 4)
         
-        local Lbl = Instance.new("TextLabel", Row); Lbl.Size=UDim2.new(0.6,0,1,0); Lbl.Position=UDim2.new(0.03,0,0,0); Lbl.BackgroundTransparency=1; Lbl.Text=pt.name; Lbl.TextColor3=Color3.white; Lbl.TextXAlignment=Enum.TextXAlignment.Left; Lbl.Font=Enum.Font.Gotham; Lbl.TextSize=12
+        local Lbl = Instance.new("TextLabel", Row); Lbl.Size=UDim2.new(0.6,0,1,0); Lbl.Position=UDim2.new(0.03,0,0,0); Lbl.BackgroundTransparency=1; Lbl.Text=pt.name; Lbl.TextColor3=Color3.fromRGB(255,255,255); Lbl.TextXAlignment=Enum.TextXAlignment.Left; Lbl.Font=Enum.Font.Gotham; Lbl.TextSize=12
         
-        local BtnGo = Instance.new("TextButton", Row); BtnGo.Text="IR"; BtnGo.Size=UDim2.new(0.18,0,0.8,0); BtnGo.Position=UDim2.new(0.60,0,0.1,0); BtnGo.BackgroundColor3=Color3.fromRGB(0,160,100); BtnGo.TextColor3=Color3.white; BtnGo.Font=Enum.Font.GothamBold; BtnGo.TextSize=10; Instance.new("UICorner", BtnGo).CornerRadius=UDim.new(0,3)
+        local BtnGo = Instance.new("TextButton", Row); BtnGo.Text="IR"; BtnGo.Size=UDim2.new(0.18,0,0.8,0); BtnGo.Position=UDim2.new(0.60,0,0.1,0); BtnGo.BackgroundColor3=Color3.fromRGB(0,160,100); BtnGo.TextColor3=Color3.fromRGB(255,255,255); BtnGo.Font=Enum.Font.GothamBold; BtnGo.TextSize=10; Instance.new("UICorner", BtnGo).CornerRadius=UDim.new(0,3)
         
-        local BtnDel = Instance.new("TextButton", Row); BtnDel.Text="X"; BtnDel.Size=UDim2.new(0.15,0,0.8,0); BtnDel.Position=UDim2.new(0.82,0,0.1,0); BtnDel.BackgroundColor3=Color3.fromRGB(180,60,60); BtnDel.TextColor3=Color3.white; BtnDel.Font=Enum.Font.GothamBold; BtnDel.TextSize=10; Instance.new("UICorner", BtnDel).CornerRadius=UDim.new(0,3)
+        local BtnDel = Instance.new("TextButton", Row); BtnDel.Text="X"; BtnDel.Size=UDim2.new(0.15,0,0.8,0); BtnDel.Position=UDim2.new(0.82,0,0.1,0); BtnDel.BackgroundColor3=Color3.fromRGB(180,60,60); BtnDel.TextColor3=Color3.fromRGB(255,255,255); BtnDel.Font=Enum.Font.GothamBold; BtnDel.TextSize=10; Instance.new("UICorner", BtnDel).CornerRadius=UDim.new(0,3)
         
         BtnGo.MouseButton1Click:Connect(function() TeleportTo(Vector3.new(pt.x, pt.y, pt.z)) end)
         BtnDel.MouseButton1Click:Connect(function() table.remove(SavedPoints, i); SalvarArquivo(); RefreshList() end)
@@ -324,4 +322,4 @@ end
 -- 7. STARTUP
 CarregarArquivo()
 RefreshList()
-LogarEvento("SUCESSO", "Módulo TP v1.6 (Clean UI) carregado.")
+LogarEvento("SUCESSO", "Módulo TP v1.7 (FIXED COLORS) carregado.")
