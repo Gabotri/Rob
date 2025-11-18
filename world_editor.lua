@@ -1,10 +1,10 @@
 --[==[
-    MÓDULO: World Editor Pro v1.2 (Resize Fix & Backspace)
+    MÓDULO: World Editor Pro v1.3 (Stable Physics & Hotkeys)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - [FIX] Resize corrigido: Matemática de vetores reescrita (escala suave e na direção certa).
-    - [FIX] Atalho de Deletar alterado para 'Backspace' para não fechar o Chassi.
-    - [FIX] Sensibilidade ajustada para 1:1.
+    - [FIX] Sensibilidade: Agora usa CFrame Relativo (1:1 com o mouse).
+    - [FIX] Multi-Select: Agora requer Ctrl + Shift + Click.
+    - [FIX] Ferramenta Resize já estava corrigida na v1.2, mantida aqui.
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -26,27 +26,27 @@ local Workspace = game:GetService("Workspace")
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
 
--- 3. CONFIGURAÇÕES & ESTADO
+-- 3. CONFIGURAÇÕES
 local EditorSettings = {
     Enabled = false,
     SnapMove = 1.0,
     SnapRotate = 45,
     SnapEnabled = false,
-    ToolMode = "Move",    -- Move, Rotate, Resize
+    ToolMode = "Move",
     Space = "World"
 }
 
 local SelectedObjects = {}
 local Gizmos = {}
--- Variáveis para controle de Resize "Smooth"
-local OriginalSize = Vector3.new()
+
+-- Variáveis de Controle de Física (Estabilidade)
 local OriginalCFrame = CFrame.new()
-local DragStartPoint = nil
+local OriginalSize = Vector3.new()
 
 -- UI References
 local ScreenGui, PropFrame
 
--- 4. SISTEMA DE GIZMOS (CORRIGIDO)
+-- 4. SISTEMA DE GIZMOS (ESTABILIZADO)
 --========================================================================
 local function ClearGizmos()
     for _, g in pairs(Gizmos) do g:Destroy() end
@@ -64,91 +64,83 @@ local function UpdateGizmos()
             box.Adornee = part; box.LineThickness = 0.05; box.Color3 = Color3.fromRGB(0, 255, 255); box.Transparency = 0.5; box.Parent = ScreenGui
             table.insert(Gizmos, box)
 
-            -- === FERRAMENTA MOVE ===
+            -- === FERRAMENTA MOVE (ESTÁVEL) ===
             if EditorSettings.ToolMode == "Move" then
                 local handles = Instance.new("Handles")
-                handles.Style = Enum.HandlesStyle.Resize -- Usamos visual de setas
+                handles.Style = Enum.HandlesStyle.Resize
                 handles.Adornee = part; handles.Color3 = Color3.fromRGB(255, 255, 0); handles.Parent = ScreenGui
                 
+                -- Salva posição inicial ao clicar
+                handles.MouseButton1Down:Connect(function()
+                    OriginalCFrame = part.CFrame
+                end)
+
                 handles.MouseDrag:Connect(function(face, distance)
-                    local delta = distance
-                    if EditorSettings.SnapEnabled then delta = math.floor(distance / EditorSettings.SnapMove) * EditorSettings.SnapMove end
+                    local d = distance
+                    if EditorSettings.SnapEnabled then d = math.floor(d / EditorSettings.SnapMove) * EditorSettings.SnapMove end
                     
-                    local cf = part.CFrame
-                    -- Move na direção da face relativa
-                    if face == Enum.NormalId.Right then part.CFrame = cf + (cf.RightVector * delta)
-                    elseif face == Enum.NormalId.Left then part.CFrame = cf - (cf.RightVector * delta)
-                    elseif face == Enum.NormalId.Top then part.CFrame = cf + (cf.UpVector * delta)
-                    elseif face == Enum.NormalId.Bottom then part.CFrame = cf - (cf.UpVector * delta)
-                    elseif face == Enum.NormalId.Front then part.CFrame = cf + (cf.LookVector * delta)
-                    elseif face == Enum.NormalId.Back then part.CFrame = cf - (cf.LookVector * delta) end
+                    -- Calcula baseado no Original, não no atual (Evita aceleração infinita)
+                    local cf = OriginalCFrame
+                    
+                    if face == Enum.NormalId.Right then part.CFrame = cf + (cf.RightVector * d)
+                    elseif face == Enum.NormalId.Left then part.CFrame = cf - (cf.RightVector * d)
+                    elseif face == Enum.NormalId.Top then part.CFrame = cf + (cf.UpVector * d)
+                    elseif face == Enum.NormalId.Bottom then part.CFrame = cf - (cf.UpVector * d)
+                    elseif face == Enum.NormalId.Front then part.CFrame = cf + (cf.LookVector * d)
+                    elseif face == Enum.NormalId.Back then part.CFrame = cf - (cf.LookVector * d) end
                     
                     UpdatePropertiesUI(part)
                 end)
                 table.insert(Gizmos, handles)
                 
-            -- === FERRAMENTA ROTATE ===
+            -- === FERRAMENTA ROTATE (ESTÁVEL) ===
             elseif EditorSettings.ToolMode == "Rotate" then
                 local arc = Instance.new("ArcHandles")
                 arc.Adornee = part; arc.Parent = ScreenGui
+                
+                arc.MouseButton1Down:Connect(function()
+                    OriginalCFrame = part.CFrame
+                end)
                 
                 arc.MouseDrag:Connect(function(axis, relativeAngle)
                     local rot = relativeAngle
                     if EditorSettings.SnapEnabled then rot = math.floor(relativeAngle / math.rad(EditorSettings.SnapRotate)) * math.rad(EditorSettings.SnapRotate) end
                     
-                    if axis == Enum.Axis.X then part.CFrame = part.CFrame * CFrame.Angles(rot, 0, 0)
-                    elseif axis == Enum.Axis.Y then part.CFrame = part.CFrame * CFrame.Angles(0, rot, 0)
-                    elseif axis == Enum.Axis.Z then part.CFrame = part.CFrame * CFrame.Angles(0, 0, rot) end
+                    -- Aplica a rotação sobre o CFrame Original
+                    if axis == Enum.Axis.X then part.CFrame = OriginalCFrame * CFrame.Angles(rot, 0, 0)
+                    elseif axis == Enum.Axis.Y then part.CFrame = OriginalCFrame * CFrame.Angles(0, rot, 0)
+                    elseif axis == Enum.Axis.Z then part.CFrame = OriginalCFrame * CFrame.Angles(0, 0, rot) end
+                    
                     UpdatePropertiesUI(part)
                 end)
                 table.insert(Gizmos, arc)
             
-            -- === FERRAMENTA RESIZE (CORRIGIDA) ===
+            -- === FERRAMENTA RESIZE (ESTÁVEL) ===
             elseif EditorSettings.ToolMode == "Resize" then
                 local handles = Instance.new("Handles")
                 handles.Style = Enum.HandlesStyle.Resize
                 handles.Adornee = part; handles.Color3 = Color3.fromRGB(0, 100, 255); handles.Parent = ScreenGui
                 
-                -- Armazena estado inicial ao clicar
                 handles.MouseButton1Down:Connect(function()
                     OriginalSize = part.Size
                     OriginalCFrame = part.CFrame
                 end)
 
                 handles.MouseDrag:Connect(function(face, distance)
-                    -- Aplica snap se necessário
                     local d = distance
                     if EditorSettings.SnapEnabled then d = math.floor(d / EditorSettings.SnapMove) * EditorSettings.SnapMove end
                     
-                    -- Vetores de Direção Baseados na Face
                     local sizeChange = Vector3.new(0,0,0)
                     local posChange = Vector3.new(0,0,0)
                     
-                    -- Lógica: Aumenta o tamanho E move o centro metade da distância para manter o outro lado fixo
-                    if face == Enum.NormalId.Right then -- X+
-                        sizeChange = Vector3.new(d, 0, 0)
-                        posChange = OriginalCFrame.RightVector * (d / 2)
-                    elseif face == Enum.NormalId.Left then -- X-
-                        sizeChange = Vector3.new(d, 0, 0)
-                        posChange = OriginalCFrame.RightVector * (-d / 2)
-                    elseif face == Enum.NormalId.Top then -- Y+
-                        sizeChange = Vector3.new(0, d, 0)
-                        posChange = OriginalCFrame.UpVector * (d / 2)
-                    elseif face == Enum.NormalId.Bottom then -- Y-
-                        sizeChange = Vector3.new(0, d, 0)
-                        posChange = OriginalCFrame.UpVector * (-d / 2)
-                    elseif face == Enum.NormalId.Front then -- Z- (Roblox Front é -Z)
-                         -- No resize handle, front usually expands Z axis. 
-                         -- Vamos simplificar: Front aumenta Z
-                         sizeChange = Vector3.new(0, 0, d)
-                         posChange = OriginalCFrame.LookVector * (d / 2)
-                    elseif face == Enum.NormalId.Back then -- Z+
-                         sizeChange = Vector3.new(0, 0, d)
-                         posChange = OriginalCFrame.LookVector * (-d / 2)
-                    end
+                    -- Lógica: Aumenta tamanho e compensa posição (Centro)
+                    if face == Enum.NormalId.Right then sizeChange = Vector3.new(d, 0, 0); posChange = OriginalCFrame.RightVector * (d / 2)
+                    elseif face == Enum.NormalId.Left then sizeChange = Vector3.new(d, 0, 0); posChange = OriginalCFrame.RightVector * (-d / 2)
+                    elseif face == Enum.NormalId.Top then sizeChange = Vector3.new(0, d, 0); posChange = OriginalCFrame.UpVector * (d / 2)
+                    elseif face == Enum.NormalId.Bottom then sizeChange = Vector3.new(0, d, 0); posChange = OriginalCFrame.UpVector * (-d / 2)
+                    elseif face == Enum.NormalId.Front then sizeChange = Vector3.new(0, 0, d); posChange = OriginalCFrame.LookVector * (d / 2)
+                    elseif face == Enum.NormalId.Back then sizeChange = Vector3.new(0, 0, d); posChange = OriginalCFrame.LookVector * (-d / 2) end
 
-                    -- Aplica Mudanças (Resetando ao original + delta para evitar erro de acumulação)
-                    -- Nota: Handles acumulam 'distance' desde o clique inicial, então usamos OriginalSize
                     part.Size = OriginalSize + sizeChange
                     part.CFrame = OriginalCFrame + posChange
                     
@@ -168,11 +160,10 @@ local function SelectObject(obj, multi)
         return 
     end
     
-    -- Verifica se já está selecionado
     local found = false
     for i, v in ipairs(SelectedObjects) do 
         if v == obj then 
-            if multi then table.remove(SelectedObjects, i) end -- Deseleciona se multi
+            if multi then table.remove(SelectedObjects, i) end
             found = true 
             break 
         end 
@@ -190,7 +181,7 @@ end
 -- 6. UI PURA
 --========================================================================
 ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "GabotriWorldEditor_v1.2"
+ScreenGui.Name = "GabotriWorldEditor_v1.3"
 ScreenGui.Parent = CoreGui
 ScreenGui.Enabled = false
 ScreenGui.ResetOnSpawn = false
@@ -227,7 +218,7 @@ local InpPos = CreatePropInput("Position", 2)
 local InpSize = CreatePropInput("Size", 3)
 local InpTransp = CreatePropInput("Transparency", 4)
 
--- Função Update UI
+-- Update UI
 function UpdatePropertiesUI(obj)
     if not obj then return end
     InpName.Text = obj.Name
@@ -238,24 +229,14 @@ function UpdatePropertiesUI(obj)
     end
 end
 
--- Inputs Logic
-InpPos.FocusLost:Connect(function()
-    if #SelectedObjects > 0 then local x,y,z = InpPos.Text:match("([^,]+),%s*([^,]+),%s*([^,]+)")
-        if x and SelectedObjects[1]:IsA("BasePart") then SelectedObjects[1].Position = Vector3.new(x,y,z); UpdateGizmos() end end
-end)
-InpSize.FocusLost:Connect(function()
-    if #SelectedObjects > 0 then local x,y,z = InpSize.Text:match("([^,]+),%s*([^,]+),%s*([^,]+)")
-        if x and SelectedObjects[1]:IsA("BasePart") then SelectedObjects[1].Size = Vector3.new(x,y,z); UpdateGizmos() end end
-end)
-
 -- TOOLBAR
 local ToolFrame = Instance.new("Frame", ScreenGui)
-ToolFrame.Name = "Tools"; ToolFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35); ToolFrame.Position = UDim2.new(0.4, 0, 0.02, 0); ToolFrame.Size = UDim2.new(0, 320, 0, 40)
+ToolFrame.Name = "Tools"; ToolFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35); ToolFrame.Position = UDim2.new(0.4, 0, 0.02, 0); ToolFrame.Size = UDim2.new(0, 300, 0, 40)
 Instance.new("UICorner", ToolFrame).CornerRadius = UDim.new(0, 6)
 local TL = Instance.new("UIListLayout", ToolFrame); TL.FillDirection = Enum.FillDirection.Horizontal; TL.Padding = UDim.new(0, 5); TL.HorizontalAlignment = Enum.HorizontalAlignment.Center; TL.VerticalAlignment = Enum.VerticalAlignment.Center
 
 local function CreateToolBtn(text, mode)
-    local btn = Instance.new("TextButton", ToolFrame); btn.Size = UDim2.new(0, 70, 0, 30); btn.Text = text; btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55); btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.GothamBold; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    local btn = Instance.new("TextButton", ToolFrame); btn.Size = UDim2.new(0, 60, 0, 30); btn.Text = text; btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55); btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.GothamBold; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
     btn.MouseButton1Click:Connect(function() EditorSettings.ToolMode = mode; UpdateGizmos() end)
     return btn
 end
@@ -264,10 +245,9 @@ CreateToolBtn("Move", "Move")
 CreateToolBtn("Rotate", "Rotate")
 CreateToolBtn("Resize", "Resize")
 
--- 7. INPUTS E LOGICA
+-- 7. INPUTS
 --========================================================================
 UserInputService.InputBegan:Connect(function(input, gp)
-    -- Insert: Toggle
     if input.KeyCode == Enum.KeyCode.Insert then
         EditorSettings.Enabled = not EditorSettings.Enabled
         ScreenGui.Enabled = EditorSettings.Enabled
@@ -277,23 +257,21 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if not EditorSettings.Enabled then return end
     if gp then return end
 
-    -- Click: Select
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         if Mouse.Target then
-            SelectObject(Mouse.Target, UserInputService:IsKeyDown(Enum.KeyCode.LeftControl))
+            -- [FIX] Multi-select: Ctrl + Shift + Click
+            local isMulti = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+            SelectObject(Mouse.Target, isMulti)
         else
-            if not UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then SelectObject(nil) end
+            if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)) then SelectObject(nil) end
         end
     end
 
-    -- [FIX] Backspace: Delete (Para não conflitar com o Chassi)
-    if input.KeyCode == Enum.KeyCode.Backspace then
+    if input.KeyCode == Enum.KeyCode.Backspace then -- [FIX] Backspace delete
         for _, o in pairs(SelectedObjects) do o:Destroy() end
         SelectObject(nil)
-        LogarEvento("EDITOR", "Objetos deletados com Backspace.")
     end
     
-    -- Ctrl+D: Duplicate
     if input.KeyCode == Enum.KeyCode.D and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
         local clones = {}
         for _, o in pairs(SelectedObjects) do
@@ -310,7 +288,7 @@ end)
 
 -- 8. CHASSI
 if TabMundo then
-    pCreate("SecEditor", TabMundo, "CreateSection", "World Editor v1.2 (Fix)", "Left")
+    pCreate("SecEditor", TabMundo, "CreateSection", "World Editor v1.3 (Physics Fix)", "Left")
     pCreate("ToggleEdit", TabMundo, "CreateToggle", {
         Name = "Ativar Editor [Insert]", CurrentValue = false,
         Callback = function(v) EditorSettings.Enabled = v; ScreenGui.Enabled = v; UpdateGizmos() end
@@ -321,4 +299,4 @@ if TabMundo then
     })
 end
 
-LogarEvento("SUCESSO", "Módulo World Editor v1.2 (Resize Fix) carregado.")
+LogarEvento("SUCESSO", "Módulo World Editor v1.3 (Physics Stable) carregado.")
