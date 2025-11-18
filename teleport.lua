@@ -1,11 +1,11 @@
 --[==[
-    MÓDULO: Teleport Manager v1.4 (UI Remaster & Gizmo Fix)
+    MÓDULO: Teleport Manager v1.5 (Compatibility Fix)
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
+    - [FIX] Substituído Color3.white/black por Color3.fromRGB para compatibilidade total.
     - Interface limpa, organizada e moderna (UI Pura).
     - Lista de pontos com rolagem independente.
     - Gizmos 3D funcionais.
-    - Modos Safe/Instant + TP Click (Ctrl+Click).
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -55,7 +55,7 @@ local function AtualizarGizmos()
     if not Settings.ShowGizmos then return end
     
     GizmoFolder = Instance.new("Folder", Workspace)
-    GizmoFolder.Name = "GabotriGizmos_v1.4"
+    GizmoFolder.Name = "GabotriGizmos_v1.5"
     
     for _, pt in ipairs(SavedPoints) do
         if pt.x and pt.y and pt.z then
@@ -81,8 +81,8 @@ local function AtualizarGizmos()
             local txt = Instance.new("TextLabel")
             txt.Size = UDim2.new(1,0,1,0)
             txt.BackgroundTransparency = 1
-            txt.Text = pt.name .. "\n(" .. math.floor(pt.dist or 0) .. "m)" -- Distancia atualiza depois ou fica estática
-            txt.TextColor3 = Color3.new(1,1,1)
+            txt.Text = pt.name .. "\n(" .. math.floor(pt.dist or 0) .. "m)" 
+            txt.TextColor3 = Color3.fromRGB(255, 255, 255)
             txt.TextStrokeTransparency = 0
             txt.Font = Enum.Font.SourceSansBold
             txt.TextSize = 12
@@ -156,7 +156,7 @@ end
 -- 5. UI MANAGER (REMASTERIZADA)
 --========================================================================
 ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-ScreenGui.Name = "TPManager_v1.4"
+ScreenGui.Name = "TPManager_v1.5"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
 
@@ -177,11 +177,10 @@ local Header = Instance.new("Frame", MainFrame)
 Header.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 Header.Size = UDim2.new(1, 0, 0, 30)
 local HeaderCorner = Instance.new("UICorner", Header); HeaderCorner.CornerRadius = UDim.new(0, 8)
--- Tapa a parte de baixo do arredondamento do header para conectar com o frame
 local HeaderFill = Instance.new("Frame", Header); HeaderFill.BorderSizePixel=0; HeaderFill.BackgroundColor3=Header.BackgroundColor3; HeaderFill.Size=UDim2.new(1,0,0,5); HeaderFill.Position=UDim2.new(0,0,1,-5)
 
 local TitleLbl = Instance.new("TextLabel", Header)
-TitleLbl.Text = "  TP Manager v1.4 [F2]"
+TitleLbl.Text = "  TP Manager v1.5 [F2]"
 TitleLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
 TitleLbl.Font = Enum.Font.GothamBold
 TitleLbl.TextSize = 14
@@ -208,7 +207,7 @@ local UIL_Top = Instance.new("UIListLayout", TopContainer)
 UIL_Top.SortOrder = Enum.SortOrder.LayoutOrder
 UIL_Top.Padding = UDim.new(0, 5)
 
--- 1. Configurações (Mode / Speed / Gizmo)
+-- 1. Configurações
 local ConfigFrame = Instance.new("Frame", TopContainer)
 ConfigFrame.LayoutOrder = 1
 ConfigFrame.BackgroundTransparency = 1
@@ -219,7 +218,7 @@ BtnModeDisplay.Size = UDim2.new(0.58, 0, 0.45, 0)
 BtnModeDisplay.Font = Enum.Font.GothamBold
 BtnModeDisplay.TextSize = 12
 BtnModeDisplay.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-BtnModeDisplay.TextColor3 = Color3.white
+BtnModeDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
 local Corner1 = Instance.new("UICorner", BtnModeDisplay); Corner1.CornerRadius = UDim.new(0, 4)
 
 local InputSpeed = Instance.new("TextBox", ConfigFrame)
@@ -228,14 +227,14 @@ InputSpeed.Position = UDim2.new(0.62, 0, 0, 0)
 InputSpeed.PlaceholderText = "Speed"
 InputSpeed.Text = tostring(Settings.SafeSpeed)
 InputSpeed.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-InputSpeed.TextColor3 = Color3.white
+InputSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
 local Corner2 = Instance.new("UICorner", InputSpeed); Corner2.CornerRadius = UDim.new(0, 4)
 
 local BtnToggleGizmo = Instance.new("TextButton", ConfigFrame)
 BtnToggleGizmo.Size = UDim2.new(1, 0, 0.45, 0)
 BtnToggleGizmo.Position = UDim2.new(0, 0, 0.55, 0)
 BtnToggleGizmo.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-BtnToggleGizmo.TextColor3 = Color3.white
+BtnToggleGizmo.TextColor3 = Color3.fromRGB(255, 255, 255)
 BtnToggleGizmo.Font = Enum.Font.Gotham
 BtnToggleGizmo.TextSize = 12
 local Corner3 = Instance.new("UICorner", BtnToggleGizmo); Corner3.CornerRadius = UDim.new(0, 4)
@@ -282,21 +281,21 @@ TitleCreate.TextSize = 10
 
 local InpName = Instance.new("TextBox", CreateFrame)
 InpName.Size = UDim2.new(0.9, 0, 0, 22); InpName.Position = UDim2.new(0.05, 0, 0.25, 0)
-InpName.PlaceholderText = "Nome do Local"; InpName.BackgroundColor3 = Color3.fromRGB(25, 25, 25); InpName.TextColor3 = Color3.white
+InpName.PlaceholderText = "Nome do Local"; InpName.BackgroundColor3 = Color3.fromRGB(25, 25, 25); InpName.TextColor3 = Color3.fromRGB(255, 255, 255)
 local CornerN = Instance.new("UICorner", InpName); CornerN.CornerRadius = UDim.new(0, 4)
 
-local InpX = Instance.new("TextBox", CreateFrame); InpX.Size = UDim2.new(0.28, 0, 0, 22); InpX.Position = UDim2.new(0.05, 0, 0.55, 0); InpX.PlaceholderText="X"; InpX.BackgroundColor3=Color3.fromRGB(25,25,25); InpX.TextColor3=Color3.white
-local InpY = Instance.new("TextBox", CreateFrame); InpY.Size = UDim2.new(0.28, 0, 0, 22); InpY.Position = UDim2.new(0.36, 0, 0.55, 0); InpY.PlaceholderText="Y"; InpY.BackgroundColor3=Color3.fromRGB(25,25,25); InpY.TextColor3=Color3.white
-local InpZ = Instance.new("TextBox", CreateFrame); InpZ.Size = UDim2.new(0.28, 0, 0, 22); InpZ.Position = UDim2.new(0.67, 0, 0.55, 0); InpZ.PlaceholderText="Z"; InpZ.BackgroundColor3=Color3.fromRGB(25,25,25); InpZ.TextColor3=Color3.white
+local InpX = Instance.new("TextBox", CreateFrame); InpX.Size = UDim2.new(0.28, 0, 0, 22); InpX.Position = UDim2.new(0.05, 0, 0.55, 0); InpX.PlaceholderText="X"; InpX.BackgroundColor3=Color3.fromRGB(25,25,25); InpX.TextColor3=Color3.fromRGB(255,255,255)
+local InpY = Instance.new("TextBox", CreateFrame); InpY.Size = UDim2.new(0.28, 0, 0, 22); InpY.Position = UDim2.new(0.36, 0, 0.55, 0); InpY.PlaceholderText="Y"; InpY.BackgroundColor3=Color3.fromRGB(25,25,25); InpY.TextColor3=Color3.fromRGB(255,255,255)
+local InpZ = Instance.new("TextBox", CreateFrame); InpZ.Size = UDim2.new(0.28, 0, 0, 22); InpZ.Position = UDim2.new(0.67, 0, 0.55, 0); InpZ.PlaceholderText="Z"; InpZ.BackgroundColor3=Color3.fromRGB(25,25,25); InpZ.TextColor3=Color3.fromRGB(255,255,255)
 
-local BtnGet = Instance.new("TextButton", CreateFrame); BtnGet.Text="GPS"; BtnGet.BackgroundColor3=Color3.fromRGB(255, 150, 0); BtnGet.TextColor3=Color3.black; BtnGet.Size=UDim2.new(0.15,0,0.52,0); BtnGet.Position=UDim2.new(0.83,0,0.25,0); Instance.new("UICorner", BtnGet).CornerRadius=UDim.new(0,4)
+local BtnGet = Instance.new("TextButton", CreateFrame); BtnGet.Text="GPS"; BtnGet.BackgroundColor3=Color3.fromRGB(255, 150, 0); BtnGet.TextColor3=Color3.fromRGB(0,0,0); BtnGet.Size=UDim2.new(0.15,0,0.52,0); BtnGet.Position=UDim2.new(0.83,0,0.25,0); Instance.new("UICorner", BtnGet).CornerRadius=UDim.new(0,4)
 
 local BtnSave = Instance.new("TextButton", TopContainer)
 BtnSave.LayoutOrder = 3
 BtnSave.Text = "SALVAR PONTO NA LISTA"
 BtnSave.Size = UDim2.new(1, 0, 0, 25)
 BtnSave.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-BtnSave.TextColor3 = Color3.white
+BtnSave.TextColor3 = Color3.fromRGB(255, 255, 255)
 BtnSave.Font = Enum.Font.GothamBold
 local CornerS = Instance.new("UICorner", BtnSave); CornerS.CornerRadius = UDim.new(0, 4)
 
@@ -346,7 +345,7 @@ local function RefreshList()
         NameL.Size = UDim2.new(0.6, 0, 1, 0)
         NameL.Position = UDim2.new(0.05, 0, 0, 0)
         NameL.BackgroundTransparency = 1
-        NameL.TextColor3 = Color3.white
+        NameL.TextColor3 = Color3.fromRGB(255, 255, 255)
         NameL.TextXAlignment = Enum.TextXAlignment.Left
         NameL.Font = Enum.Font.Gotham
         NameL.TextSize = 12
@@ -356,7 +355,7 @@ local function RefreshList()
         GoBtn.Size = UDim2.new(0.15, 0, 0.8, 0)
         GoBtn.Position = UDim2.new(0.65, 0, 0.1, 0)
         GoBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
-        GoBtn.TextColor3 = Color3.white
+        GoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         GoBtn.Font = Enum.Font.GothamBold
         Instance.new("UICorner", GoBtn).CornerRadius = UDim.new(0, 4)
         
@@ -365,7 +364,7 @@ local function RefreshList()
         DelBtn.Size = UDim2.new(0.15, 0, 0.8, 0)
         DelBtn.Position = UDim2.new(0.82, 0, 0.1, 0)
         DelBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
-        DelBtn.TextColor3 = Color3.white
+        DelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         DelBtn.Font = Enum.Font.GothamBold
         Instance.new("UICorner", DelBtn).CornerRadius = UDim.new(0, 4)
         
@@ -408,4 +407,4 @@ end
 -- 7. INICIALIZAÇÃO
 CarregarArquivo()
 RefreshList()
-LogarEvento("SUCESSO", "Módulo Teleport v1.4 (Remastered UI) carregado.")
+LogarEvento("SUCESSO", "Módulo Teleport v1.5 (Fix Colors) carregado.")
