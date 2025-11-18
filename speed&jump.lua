@@ -1,10 +1,11 @@
 --[==[
-    MÓDULO: Status Player (Speed & Jump Force) v1.0
+    MÓDULO: Status Player (Speed & Jump Force) v1.1
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
     - Sliders para definir valores.
     - Botões para aplicar uma vez.
     - Toggles para FORÇAR (Loop) contra anti-cheats básicos.
+    - [MUDANÇA v1.1] Padrões alterados: Speed 64, Jump 128.
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -24,9 +25,9 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 
--- Variáveis de Controle
-local SpeedValue = 16
-local JumpValue = 50
+-- Variáveis de Controle (Valores Iniciais Alterados)
+local SpeedValue = 64   -- Padrão v1.1
+local JumpValue = 128   -- Padrão v1.1
 local ForceSpeed = false
 local ForceJump = false
 local LoopConnection
@@ -57,10 +58,9 @@ local function ApplyJump()
         if hum.UseJumpPower then
             hum.JumpPower = JumpValue
         else
-            -- Conversão aproximada se necessário, mas aplicamos direto
-            hum.JumpHeight = JumpValue / 5 -- Ajuste fino: JumpHeight geralmente é menor (ex: 7.2 vs 50)
-            -- Se o usuário colocar 50 no slider, JumpHeight 10 é razoável.
-            -- Se ele quiser pular alto mesmo (100 power), height 20.
+            -- Conversão: JumpHeight geralmente é menor (ex: 7.2 vs 50)
+            -- Se o usuário colocar 128 no slider, JumpHeight será ~25.6
+            hum.JumpHeight = JumpValue / 5 
         end
     end
 end
@@ -71,7 +71,6 @@ LoopConnection = RunService.Heartbeat:Connect(function()
     if hum then
         -- Forçar Velocidade
         if ForceSpeed then
-            -- Só aplica se estiver diferente para economizar processamento
             if hum.WalkSpeed ~= SpeedValue then
                 hum.WalkSpeed = SpeedValue
             end
@@ -100,7 +99,7 @@ if TabPlayer then
         Range = {16, 500},
         Increment = 1,
         Suffix = " Speed",
-        CurrentValue = 16,
+        CurrentValue = 64, -- Padrão atualizado
         Flag = "SliderSpeed",
         Callback = function(Value)
             SpeedValue = Value
@@ -128,13 +127,12 @@ if TabPlayer then
     })
 
     -- === PULO ===
-    -- Separador visual ou apenas lógica
     pCreate("SliderJump", TabPlayer, "CreateSlider", {
         Name = "Força do Pulo (Jump)",
         Range = {50, 500},
         Increment = 1,
         Suffix = " Power",
-        CurrentValue = 50,
+        CurrentValue = 128, -- Padrão atualizado
         Flag = "SliderJump",
         Callback = function(Value)
             JumpValue = Value
@@ -160,7 +158,7 @@ if TabPlayer then
         end
     })
     
-    LogarEvento("SUCESSO", "Módulo Status Player carregado na UI.")
+    LogarEvento("SUCESSO", "Módulo Status Player v1.1 carregado na UI.")
 else
     LogarEvento("ERRO", "Módulo Status: TabPlayer não encontrada.")
 end
