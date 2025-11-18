@@ -1,9 +1,9 @@
 --[==[
-    MÓDULO: Status Player (Speed & Jump) v1.2 - No Slide
+    MÓDULO: Status Player (Speed & Jump) v1.3 - Auto Start
     AUTOR: Sr. Gabotri (via Gemini)
     DESCRIÇÃO: 
-    - [NOVO] Sistema "No Slide": Corta a inércia ao soltar as teclas.
-    - Speed padrão: 64 | Jump padrão: 128
+    - [NOVO v1.3] Aplica Speed (64) e Jump (128) IMEDIATAMENTE ao carregar.
+    - Inclui "No Slide" (Parada Instantânea).
 ]==]
 
 -- 1. PUXA O CHASSI
@@ -22,12 +22,12 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 
--- Variáveis de Controle
+-- Variáveis de Controle (Padrões)
 local SpeedValue = 64
 local JumpValue = 128
 local ForceSpeed = false
 local ForceJump = false
-local NoSlide = true -- Ativado por padrão para parar na hora
+local NoSlide = true
 
 -- 3. LÓGICA TÉCNICA
 --========================================================================
@@ -41,10 +41,12 @@ local function GetRoot()
     return nil
 end
 
--- Aplicações Únicas
 local function ApplySpeed()
     local hum = GetHumanoid()
-    if hum then hum.WalkSpeed = SpeedValue end
+    if hum then 
+        hum.WalkSpeed = SpeedValue 
+        LogarEvento("INFO", "Speed inicial aplicado: " .. SpeedValue)
+    end
 end
 
 local function ApplyJump()
@@ -52,6 +54,7 @@ local function ApplyJump()
     if hum then
         if hum.UseJumpPower then hum.JumpPower = JumpValue
         else hum.JumpHeight = JumpValue / 5 end
+        LogarEvento("INFO", "Jump inicial aplicado: " .. JumpValue)
     end
 end
 
@@ -77,20 +80,28 @@ RunService.Heartbeat:Connect(function()
         end
 
         -- 3. Lógica "No Slide" (Parada Instantânea)
-        -- Se a opção estiver ativa e o jogador NÃO estiver apertando teclas de andar (MoveDirection ~ 0)
         if NoSlide and hum.MoveDirection.Magnitude < 0.1 then
-            -- Mantém a velocidade Y (queda/pulo) mas ZERA a velocidade X e Z (horizontal)
-            -- Usa AssemblyLinearVelocity (padrão novo) ou Velocity (antigo)
             local vel = root.AssemblyLinearVelocity
             root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
         end
     end
 end)
 
--- 4. INTERFACE GRÁFICA
+-- 4. APLICAÇÃO AUTOMÁTICA (AUTO START)
+--========================================================================
+-- Chama as funções agora mesmo para setar os valores ao carregar o script
+task.spawn(function()
+    -- Pequeno delay para garantir que o personagem carregou se o script rodar muito rápido no Join
+    if not Player.Character then Player.CharacterAdded:Wait() end
+    wait(0.5) 
+    ApplySpeed()
+    ApplyJump()
+end)
+
+-- 5. INTERFACE GRÁFICA
 --========================================================================
 if TabPlayer then
-    pCreate("SecStatus", TabPlayer, "CreateSection", "Super Human (v1.2)", "Right")
+    pCreate("SecStatus", TabPlayer, "CreateSection", "Super Human (Auto-Start)", "Right")
 
     -- === VELOCIDADE ===
     pCreate("SliderSpeed", TabPlayer, "CreateSlider", {
@@ -98,7 +109,7 @@ if TabPlayer then
         Range = {16, 300},
         Increment = 1,
         Suffix = " WS",
-        CurrentValue = 64,
+        CurrentValue = 64, -- Mostra 64 na UI
         Callback = function(Val) SpeedValue = Val; if not ForceSpeed then ApplySpeed() end end
     })
     
@@ -108,14 +119,10 @@ if TabPlayer then
         Callback = function(Val) ForceSpeed = Val end
     })
 
-    -- Toggle NOVO para o deslize
     pCreate("ToggleNoSlide", TabPlayer, "CreateToggle", {
         Name = "Parada Instantânea (Sem Deslize)",
-        CurrentValue = true, -- Já vem ligado
-        Callback = function(Val) 
-            NoSlide = Val 
-            LogarEvento("CALLBACK", "No Slide alterado para: " .. tostring(Val))
-        end
+        CurrentValue = true, 
+        Callback = function(Val) NoSlide = Val end
     })
 
     -- === PULO ===
@@ -124,7 +131,7 @@ if TabPlayer then
         Range = {50, 500},
         Increment = 1,
         Suffix = " JP",
-        CurrentValue = 128,
+        CurrentValue = 128, -- Mostra 128 na UI
         Callback = function(Val) JumpValue = Val; if not ForceJump then ApplyJump() end end
     })
 
@@ -134,7 +141,7 @@ if TabPlayer then
         Callback = function(Val) ForceJump = Val end
     })
     
-    LogarEvento("SUCESSO", "Status Player v1.2 (No Slide) carregado.")
+    LogarEvento("SUCESSO", "Status Player v1.3 carregado e aplicado.")
 else
     LogarEvento("ERRO", "TabPlayer não encontrada.")
 end
